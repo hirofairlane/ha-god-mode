@@ -1,1 +1,3 @@
-with-contenv bashio /usr/bin/god-collector-runner.sh
+#!/usr/bin/with-contenv bashio
+export ANSIBLE_CONFIG=/data/ansible/ansible.cfg
+exec /usr/bin/god-collector.py

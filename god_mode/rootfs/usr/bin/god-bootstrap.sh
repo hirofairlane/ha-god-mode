@@ -78,8 +78,6 @@ inventory = ${INV_FILE}
 host_key_checking = False
 forks = 10
 gathering = explicit
-stdout_callback = json
-callback_result_format = json
 remote_tmp = /tmp/.ansible-\${USER:-root}/tmp
 ANSCFG
 
