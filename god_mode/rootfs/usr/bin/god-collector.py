@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # =====================================================================
-#  god-collector.py - polls all hosts via Ansible playbook + serves
-#  the resulting JSON over HTTP for the HA `rest:` integration.
+#  god-collector.py
 #
 #  Loop:
-#    1. read /data/options.json (poll_interval, hosts list)
-#    2. run `ansible-playbook gather.yml` against /data/ansible/inventory.yml
-#    3. parse JSON output, cache per host in memory
+#    1. read /data/options.json (poll_interval)
+#    2. run `ansible-playbook gather.yml -i /data/ansible/inventory.yml`
+#       -> playbook writes /data/metrics/<host>.json on controller side
+#    3. read all /data/metrics/*.json into in-memory cache
 #    4. expose:
 #         GET /api/hosts             -> dict { name: metrics }
 #         GET /api/host/<name>       -> single host JSON
 #         GET /api/health            -> status, stale list, uptime
-#         GET /api/pubkey            -> the SSH public key for propagation
-#         GET /api/inventory         -> current Ansible inventory (parsed)
-#  Stdlib only (http.server, threading, subprocess, json).
+#         GET /api/pubkey            -> the SSH public key
+#         GET /api/inventory         -> current Ansible inventory
+#  Stdlib only.
 # =====================================================================
 from __future__ import annotations
 import http.server
@@ -25,9 +25,9 @@ import threading
 import time
 from pathlib import Path
 
-# ---- Config from environment / Supervisor options.json ---------------
 DATA_DIR     = Path(os.environ.get("GOD_DATA_DIR", "/data"))
-OPTS_FILE    = DATA_DIR / "options.json"   # written by Supervisor at start
+METRICS_DIR  = DATA_DIR / "metrics"
+OPTS_FILE    = DATA_DIR / "options.json"
 INV_FILE     = DATA_DIR / "ansible" / "inventory.yml"
 CFG_FILE     = DATA_DIR / "ansible" / "ansible.cfg"
 PLAYBOOK     = "/usr/share/god-mode/ansible/playbooks/gather.yml"
@@ -50,53 +50,41 @@ def load_options() -> dict:
     return {"poll_interval": 60, "hosts": []}
 
 
-def run_playbook() -> dict[str, dict]:
-    """Runs the gather playbook with json stdout callback. Returns
-    {hostname: metrics_dict} merged from playbook results."""
+def run_playbook() -> int:
+    """Runs the gather playbook. Side effect: writes /data/metrics/<host>.json.
+    Returns playbook return code."""
     env = os.environ.copy()
     env["ANSIBLE_CONFIG"] = str(CFG_FILE)
-    env["ANSIBLE_STDOUT_CALLBACK"] = "json"
-    env["ANSIBLE_LOAD_CALLBACK_PLUGINS"] = "true"
+    env["ANSIBLE_STDOUT_CALLBACK"] = "default"  # built-in
     env["ANSIBLE_FORCE_COLOR"] = "false"
+    env.pop("ANSIBLE_CALLBACK_RESULT_FORMAT", None)
     try:
         proc = subprocess.run(
             ["ansible-playbook", PLAYBOOK, "-i", str(INV_FILE)],
             capture_output=True, text=True, timeout=180, env=env,
         )
+        if proc.returncode != 0:
+            print(f"[poll] ansible-playbook rc={proc.returncode}", flush=True)
+            print(f"[poll] stderr tail: {proc.stderr[-500:]}", flush=True)
+        return proc.returncode
     except subprocess.TimeoutExpired:
         print("[poll] ansible-playbook TIMEOUT", flush=True)
-        return {}
-    out: dict[str, dict] = {}
-    if not proc.stdout.strip():
-        print(f"[poll] empty stdout, stderr={proc.stderr[:300]!r}", flush=True)
-        return {}
-    try:
-        result = json.loads(proc.stdout)
-    except json.JSONDecodeError as e:
-        print(f"[poll] bad ansible json: {e}", flush=True)
-        return {}
-    for play in result.get("plays", []):
-        for task in play.get("tasks", []):
-            name = task.get("task", {}).get("name", "")
-            for host, hostdata in task.get("hosts", {}).items():
-                # The 'set_fact' task returns ansible_facts in hostdata
-                if "ansible_facts" in hostdata:
-                    facts = hostdata["ansible_facts"]
-                    metric = facts.get("god_metric")
-                    if metric:
-                        # parse JSON if it came as string
-                        if isinstance(metric, str):
-                            try:
-                                metric = json.loads(metric)
-                            except json.JSONDecodeError:
-                                pass
-                        out[host] = metric
-                if hostdata.get("unreachable") or hostdata.get("failed"):
-                    out.setdefault(host, {})
-                    out[host].update({
-                        "_ok": False,
-                        "_error": hostdata.get("msg") or "unreachable",
-                    })
+        return -1
+
+
+def load_metrics_from_disk() -> dict[str, dict]:
+    out = {}
+    if not METRICS_DIR.exists():
+        return out
+    for f in METRICS_DIR.glob("*.json"):
+        name = f.stem
+        try:
+            d = json.loads(f.read_text())
+            d["_ok"] = bool(d.get("_ok", True)) and "_error" not in d
+            d["_polled_at"] = int(f.stat().st_mtime)
+            out[name] = d
+        except Exception as e:
+            out[name] = {"_ok": False, "_error": f"parse: {e}"}
     return out
 
 
@@ -105,21 +93,14 @@ def poll_loop():
         opts = load_options()
         poll_every = max(15, int(opts.get("poll_interval", 60)))
         t0 = time.time()
-        try:
-            results = run_playbook()
-        except Exception as e:
-            print(f"[poll] exception: {e}", flush=True)
-            results = {}
-        ts_now = int(time.time())
+        rc = run_playbook()
+        results = load_metrics_from_disk()
         with LOCK:
-            for name, metrics in results.items():
-                if "_ok" not in metrics:
-                    metrics["_ok"] = True
-                metrics["_polled_at"] = ts_now
-                CACHE[name] = metrics
+            CACHE.clear()
+            CACHE.update(results)
         ok = sum(1 for v in results.values() if v.get("_ok"))
         elapsed = time.time() - t0
-        print(f"[poll] {time.strftime('%H:%M:%S')} - {ok}/{len(results)} ok ({elapsed:.1f}s)", flush=True)
+        print(f"[poll] {time.strftime('%H:%M:%S')} - {ok}/{len(results)} ok rc={rc} ({elapsed:.1f}s)", flush=True)
         sleep_for = max(5, poll_every - elapsed)
         time.sleep(sleep_for)
 
@@ -190,6 +171,7 @@ class ThreadingServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 def main():
+    METRICS_DIR.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=poll_loop, daemon=True).start()
     server = ThreadingServer((LISTEN_HOST, LISTEN_PORT), Handler)
     print(f"[god-collector] listening on http://{LISTEN_HOST}:{LISTEN_PORT}", flush=True)

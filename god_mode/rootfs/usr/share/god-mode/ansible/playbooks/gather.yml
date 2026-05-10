@@ -2,17 +2,27 @@
 # =====================================================================
 #  gather.yml - polling playbook
 #
-#  For each host: open SSH, gather minimal metrics in a single shell
-#  command (~50ms after connection), publish as ansible_fact `god_metric`
-#  (a JSON dict). The collector parses these from the ansible-playbook
-#  --output=json result.
+#  For each host: open SSH, run god-agent, capture stdout JSON.
+#  Save the parsed metric as /data/metrics/<host>.json on the controller
+#  (the add-on container) so the collector can read it without depending
+#  on ansible callback plugins.
 # =====================================================================
 - name: GOD Mode metrics gather
   hosts: all
   gather_facts: false
   any_errors_fatal: false
   strategy: free
+  vars:
+    metrics_dir: /data/metrics
   tasks:
+    - name: Ensure metrics dir exists (controller)
+      ansible.builtin.file:
+        path: "{{ metrics_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
     - name: Run agent (one-shot)
       ansible.builtin.shell: |
         if [ -x /usr/local/bin/god-agent ]; then
@@ -27,14 +37,22 @@
       failed_when: false
       timeout: 8
 
-    - name: Set fact god_metric (parsed)
+    - name: Parse JSON output
       ansible.builtin.set_fact:
-        god_metric: "{{ out.stdout | from_json }}"
-      when: out.stdout is defined and out.stdout.strip().startswith('{')
+        god_metric: >-
+          {%- if out.stdout is defined and out.stdout.strip().startswith('{') -%}
+            {{ out.stdout | from_json }}
+          {%- else -%}
+            {"_ok": false, "_error": "{{ (out.stderr | default(out.stdout, true) | default('no output', true) | truncate(200))|replace('\"','') }}"}
+          {%- endif -%}
 
-    - name: Set fact god_metric (raw error)
+    - name: Add freshness timestamp
       ansible.builtin.set_fact:
-        god_metric:
-          _ok: false
-          _error: "{{ out.stderr | default(out.stdout, true) | default('no output', true) | truncate(200) }}"
-      when: god_metric is not defined
+        god_metric: "{{ god_metric | combine({'_polled_at': ansible_date_time.epoch | default(lookup('pipe', 'date +%s'))|int}) }}"
+
+    - name: Save metric file (controller side)
+      ansible.builtin.copy:
+        content: "{{ god_metric | to_nice_json }}"
+        dest: "{{ metrics_dir }}/{{ inventory_hostname }}.json"
+        mode: "0644"
+      delegate_to: localhost
