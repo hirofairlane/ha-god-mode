@@ -32,11 +32,15 @@ RUN apk add --no-cache \
 COPY rootfs /
 
 # Permisos ejecutables
-RUN find /etc/s6-overlay/s6-rc.d -name "up" -o -name "run" | xargs chmod +x \
+RUN find /etc/s6-overlay/s6-rc.d \( -name "up" -o -name "run" \) -type f -exec chmod +x {} + \
     && chmod +x \
         /usr/bin/god-collector.py \
         /usr/bin/god-webui.py \
-        /usr/bin/god-agent.sh
+        /usr/bin/god-agent.sh \
+        /usr/bin/god-bootstrap.sh \
+        /usr/bin/god-deploy-packages.sh \
+        /usr/bin/god-collector-runner.sh \
+        /usr/bin/god-webui-runner.sh
 
 LABEL \
     io.hass.name="GOD Mode" \
