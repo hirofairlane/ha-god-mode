@@ -1,3 +1,4 @@
-#!/usr/bin/with-contenv bashio
+#!/command/with-contenv bashio
 # Long-running collector: polls hosts via Ansible/SSH every poll_interval s.
+export ANSIBLE_CONFIG=/data/ansible/ansible.cfg
 exec /usr/bin/god-collector.py

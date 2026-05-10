@@ -1,6 +1,9 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/base:14.5.4
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
+
+# Base oficial HA: trae Python 3.12 + s6-overlay v3 + bashio.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV LANG=C.UTF-8 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -11,36 +14,29 @@ ENV LANG=C.UTF-8 \
 # System deps:
 #   ansible-core: engine de inventory + playbooks
 #   openssh-client: claves + ssh remoto
-#   python3 + pip: collector + webui
-#   curl + jq: comprobaciones API
-#   tini: PID 1 limpio (s6 ya lo lleva, pero por seguridad)
+#   curl + jq: comprobaciones API + JSON munging en init scripts
+#   bash: bashio requiere bash
 RUN apk add --no-cache \
-        ansible-core \
         openssh-client \
-        python3 \
-        py3-pip \
-        py3-yaml \
-        py3-requests \
         curl \
         jq \
         bash \
-        tini \
         sshpass \
-    && rm -rf /var/cache/apk/*
+    && pip install --no-cache-dir --break-system-packages \
+        ansible-core==2.17.* \
+        requests \
+        pyyaml \
+    && rm -rf /var/cache/apk/* /root/.cache
 
-# Copia el rootfs (incluye services s6, scripts, playbooks, lovelace YAML)
+# Copia el rootfs (s6-rc.d, scripts, playbooks, lovelace YAML)
 COPY rootfs /
 
 # Permisos ejecutables
-RUN chmod +x \
-        /etc/cont-init.d/*.sh \
-        /etc/services.d/*/run \
+RUN find /etc/s6-overlay/s6-rc.d -name "up" -o -name "run" | xargs chmod +x \
+    && chmod +x \
         /usr/bin/god-collector.py \
         /usr/bin/god-webui.py \
         /usr/bin/god-agent.sh
-
-# Volume persistente del add-on (HA Supervisor lo monta aquí)
-# /data está reservado por Supervisor para state persistente entre reinicios
 
 LABEL \
     io.hass.name="GOD Mode" \
