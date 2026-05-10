@@ -1,3 +1,4 @@
-#!/usr/bin/with-contenv bashio
+#!/command/with-contenv bashio
 # Ingress UI: pubkey display, host status, deploy actions.
+export ANSIBLE_CONFIG=/data/ansible/ansible.cfg
 exec /usr/bin/god-webui.py

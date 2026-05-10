@@ -1,14 +1,7 @@
-#!/usr/bin/with-contenv bashio
+#!/command/with-contenv bashio
 # =====================================================================
-#  02-deploy-packages.sh - Auto-installs Lovelace YAML packages and the
-#  GOD Mode dashboard into /config when option `install_packages: true`.
-#
-#  Strategy: copy from /usr/share/god-mode/lovelace/{packages,dashboards}
-#  to /config/{packages,dashboards}, only overwriting when content
-#  differs (sha256). User edits to god_*.yaml in /config persist
-#  unless the add-on is updated.
-#
-#  Also patches /config/configuration.yaml to register the dashboard.
+#  deploy-packages (oneshot) - Auto-installs Lovelace YAML packages and
+#  the GOD Mode dashboard into /config when option `install_packages: true`.
 # =====================================================================
 set -e
 
@@ -72,7 +65,7 @@ if [ -f "${CFG}" ] && ! grep -q "god-mode:" "${CFG}"; then
     ' "${CFG}.god-mode.bak" > "${CFG}.tmp" && mv "${CFG}.tmp" "${CFG}"
 fi
 
-# --- Inject required secrets if not present ---
+# --- Inject required PVE secret if not present ---
 SECRETS=/config/secrets.yaml
 if [ -f "${SECRETS}" ]; then
     if ! grep -q "^god_pve_api_authorization:" "${SECRETS}"; then
@@ -83,6 +76,11 @@ if [ -f "${SECRETS}" ]; then
             bashio::log.info "Added god_pve_api_authorization to secrets.yaml"
         fi
     fi
+fi
+
+# --- Stub god_telegram_chat_id placeholder if missing ---
+if [ -f "${SECRETS}" ] && ! grep -q "^god_telegram_chat_id:" "${SECRETS}"; then
+    printf "god_telegram_chat_id: 0  # placeholder, set after creating Telegram group\n" >> "${SECRETS}"
 fi
 
 bashio::log.info "Lovelace YAML deploy complete"
