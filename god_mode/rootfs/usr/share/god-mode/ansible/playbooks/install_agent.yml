@@ -1,0 +1,68 @@
+---
+# =====================================================================
+#  install_agent.yml - first-time provisioning of each host
+#
+#    1. Append GOD Mode pubkey to ~/.ssh/authorized_keys (idempotent).
+#    2. Copy /usr/share/god-mode/agent/god-agent.sh to:
+#         - /usr/local/bin/god-agent  (root user, requires sudo or root)
+#         - $HOME/.local/bin/god-agent (non-root user)
+#    3. chmod +x.
+#    4. Run a smoke test (god-agent should produce JSON).
+#
+#  Triggered by:
+#    - /api/install POST from web UI
+#    - or `ansible-playbook install_agent.yml -i /data/ansible/inventory.yml`
+#
+#  Note: this playbook ASSUMES the user has already added the pubkey to
+#  authorized_keys *initially* (chicken-and-egg). The web UI shows the
+#  pubkey for that. After the first time, this playbook keeps it synced.
+# =====================================================================
+- name: GOD Mode install_agent
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  strategy: free
+  vars:
+    god_agent_src: /usr/share/god-mode/agent/god-agent.sh
+  tasks:
+    - name: Ensure authorized_keys contains GOD Mode pubkey
+      ansible.posix.authorized_key:
+        user: "{{ ansible_user }}"
+        state: present
+        key: "{{ lookup('file', '/data/.ssh/id_ed25519.pub') }}"
+        comment: "god-mode"
+      ignore_errors: true   # (the user pre-added it manually, this is idempotent)
+
+    - name: Detect if user can write /usr/local/bin
+      ansible.builtin.stat:
+        path: /usr/local/bin
+      register: usrlocal
+
+    - name: Pick install destination
+      ansible.builtin.set_fact:
+        agent_dest: >-
+          {{ '/usr/local/bin/god-agent'
+             if (ansible_user == 'root' or usrlocal.stat.writeable | default(false))
+             else lookup('env','HOME') ~ '/.local/bin/god-agent' }}
+
+    - name: Ensure parent dir exists
+      ansible.builtin.file:
+        path: "{{ agent_dest | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy agent script
+      ansible.builtin.copy:
+        src: "{{ god_agent_src }}"
+        dest: "{{ agent_dest }}"
+        mode: "0755"
+
+    - name: Smoke test
+      ansible.builtin.shell: "{{ agent_dest }}"
+      register: smoke
+      changed_when: false
+      timeout: 10
+
+    - name: Show smoke output
+      ansible.builtin.debug:
+        msg: "{{ smoke.stdout | truncate(200) }}"

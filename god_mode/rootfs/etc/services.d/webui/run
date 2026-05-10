@@ -1,0 +1,3 @@
+#!/usr/bin/with-contenv bashio
+# Ingress UI: pubkey display, host status, deploy actions.
+exec /usr/bin/god-webui.py

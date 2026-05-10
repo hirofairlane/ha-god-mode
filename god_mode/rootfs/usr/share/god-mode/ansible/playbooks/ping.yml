@@ -1,0 +1,15 @@
+---
+# =====================================================================
+#  ping.yml - quick connectivity check (no metrics).
+#  Used by the web UI "Test all hosts" button.
+# =====================================================================
+- name: GOD Mode connectivity test
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  tasks:
+    - name: SSH ping
+      ansible.builtin.ping:
+      register: ping_result
+      ignore_unreachable: true
+      ignore_errors: true

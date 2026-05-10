@@ -1,0 +1,9 @@
+---
+build_from:
+  amd64: ghcr.io/hassio-addons/base:14.5.4
+  aarch64: ghcr.io/hassio-addons/base:14.5.4
+labels:
+  org.opencontainers.image.title: GOD Mode
+  org.opencontainers.image.description: Centralized homelab monitoring for HA
+  org.opencontainers.image.source: https://github.com/hirofairlane/ha-god-mode
+  org.opencontainers.image.licenses: MIT

@@ -1,0 +1,78 @@
+# =====================================================================
+#  god_core.yaml - nucleo de GOD Mode
+#
+#  Smoke test inicial: variables globales del proyecto, helpers para
+#  Telegram channel y bateria, grupo agregador.
+#  Cargado automaticamente por `packages: !include_dir_named packages`.
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# Helpers globales (input_text / input_number / input_select / input_datetime)
+# ---------------------------------------------------------------------
+input_text:
+  god_telegram_chat_id:
+    name: "GOD Mode - Telegram chat_id"
+    icon: mdi:identifier
+    initial: ""
+    max: 32
+
+input_number:
+  god_battery_threshold_pct:
+    name: "GOD Mode - Umbral pila baja (%)"
+    min: 5
+    max: 50
+    step: 5
+    initial: 25
+    unit_of_measurement: "%"
+    icon: mdi:battery-alert
+    mode: slider
+
+input_select:
+  god_battery_reminder_freq:
+    name: "GOD Mode - Frecuencia recordatorio pilas"
+    icon: mdi:repeat
+    options:
+      - "diario"
+      - "semanal"
+      - "mensual"
+      - "desactivado"
+    initial: "semanal"
+
+input_datetime:
+  god_battery_reminder_time:
+    name: "GOD Mode - Hora recordatorio pilas"
+    icon: mdi:clock-outline
+    has_time: true
+    has_date: false
+
+# ---------------------------------------------------------------------
+# Smoke test sensor con trigger de tiempo (asegura evaluacion periodica)
+# ---------------------------------------------------------------------
+template:
+  - trigger:
+      - platform: time_pattern
+        minutes: "/5"
+      - platform: homeassistant
+        event: start
+    sensor:
+      - name: "GOD Mode loaded"
+        unique_id: god_mode_loaded
+        icon: mdi:check-decagram
+        state: "ok"
+        attributes:
+          version: "0.1.0"
+          last_eval: "{{ now().isoformat() }}"
+          author: "GOD Mode pipeline"
+
+# ---------------------------------------------------------------------
+# Grupo agregador (referenciado por el dashboard mas adelante)
+# ---------------------------------------------------------------------
+group:
+  god_mode_helpers:
+    name: "GOD Mode - Helpers"
+    entities:
+      - input_text.god_telegram_chat_id
+      - input_number.god_battery_threshold_pct
+      - input_select.god_battery_reminder_freq
+      - input_datetime.god_battery_reminder_time
+      - sensor.god_mode_loaded

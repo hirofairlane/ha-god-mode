@@ -1,0 +1,220 @@
+# =====================================================================
+#  god_mode.yaml - dashboard Lovelace de GOD Mode
+#  Cargado via lovelace.dashboards.god-mode (configuration.yaml)
+#  Sin requerir HACS - usa solo cards built-in de HA.
+# =====================================================================
+title: GOD Mode
+views:
+  # ======================================================================
+  - title: Overview
+    path: overview
+    icon: mdi:eye-outline
+    badges: []
+    cards:
+      - type: markdown
+        content: |
+          # GOD Mode · Overview
+          _Estado de toda la infraestructura en tiempo real_
+
+      - type: glance
+        title: Cluster Proxmox
+        show_state: true
+        columns: 4
+        entities:
+          - entity: sensor.god_pve_zeratul_status
+            name: Zeratul
+          - entity: sensor.god_pve_h340_status
+            name: H340
+          - entity: sensor.god_pve_vms_running
+            name: VMs run
+          - entity: sensor.god_pve_cts_running
+            name: CTs run
+
+      - type: entities
+        title: Hosts online (24/7 + on-demand)
+        show_header_toggle: false
+        entities:
+          - entity: binary_sensor.god_host_zeratul_online
+            name: zeratul (Proxmox host)
+          - entity: binary_sensor.god_host_plex_online
+            name: plex / LXC 101 (NAS 18T)
+          - entity: binary_sensor.god_host_frigate_online
+            name: frigate (NVR físico)
+          - entity: binary_sensor.god_host_h340_online
+            name: h340 (Proxmox failback)
+          - entity: binary_sensor.god_host_crafty_online
+            name: crafty / LXC 103 (Minecraft)
+          - entity: binary_sensor.god_host_jarvis_online
+            name: jarvis / LXC 104 (Ollama)
+
+      - type: entities
+        title: VMs / Containers
+        show_header_toggle: false
+        entities:
+          - entity: sensor.god_pve_vm_100_status
+            name: VM 100 · HA prod
+          - entity: sensor.god_pve_vm_102_status
+            name: VM 102 · HA testing
+          - entity: sensor.god_pve_vm_105_status
+            name: VM 105 · manjaro-desktop
+          - entity: sensor.god_pve_ct_101_status
+            name: LXC 101 · plex
+          - entity: sensor.god_pve_ct_103_status
+            name: LXC 103 · crafty
+          - entity: sensor.god_pve_ct_104_status
+            name: LXC 104 · jarvis
+          - entity: sensor.god_pve_ct_171_status
+            name: LXC 171 · frigate-docker
+
+      - type: gauge
+        name: Zeratul CPU
+        entity: sensor.god_pve_zeratul_cpu_pct
+        min: 0
+        max: 100
+        severity:
+          green: 0
+          yellow: 60
+          red: 85
+
+      - type: gauge
+        name: Zeratul RAM
+        entity: sensor.god_pve_zeratul_mem_pct
+        min: 0
+        max: 100
+        severity:
+          green: 0
+          yellow: 70
+          red: 90
+
+  # ======================================================================
+  - title: Hosts
+    path: hosts
+    icon: mdi:server
+    badges: []
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Métricas en vivo (poll cada 60s desde LXC 104)"
+
+          - type: entities
+            title: zeratul (Proxmox host, i5-14400 + 64 GB)
+            entities:
+              - sensor.god_host_zeratul_cpu
+              - sensor.god_host_zeratul_mem
+              - sensor.god_host_zeratul_disk
+              - sensor.god_host_zeratul_temp
+              - sensor.god_host_zeratul_load
+              - sensor.god_host_zeratul_updates
+              - sensor.god_pve_zeratul_uptime_h
+
+          - type: entities
+            title: plex (LXC 101, 32 GB · NAS 18T)
+            entities:
+              - sensor.god_host_plex_cpu
+              - sensor.god_host_plex_mem
+              - sensor.god_host_plex_disk
+              - sensor.god_host_plex_updates
+
+          - type: entities
+            title: frigate (Dell · NVR · 16 GB)
+            entities:
+              - sensor.god_host_frigate_cpu
+              - sensor.god_host_frigate_mem
+              - sensor.god_host_frigate_disk
+              - sensor.god_host_frigate_temp
+              - sensor.god_host_frigate_updates
+
+          - type: entities
+            title: h340 (HP MicroServer Gen8 · failback)
+            entities:
+              - sensor.god_host_h340_cpu
+              - sensor.god_host_h340_mem
+              - sensor.god_host_h340_temp
+              - sensor.god_host_h340_updates
+
+          - type: entities
+            title: crafty (LXC 103, 4 GB · Minecraft)
+            entities:
+              - sensor.god_host_crafty_cpu
+              - sensor.god_host_crafty_mem
+
+          - type: entities
+            title: jarvis (LXC 104, 16 GB · Ollama + OpenClaw)
+            entities:
+              - sensor.god_host_jarvis_cpu
+              - sensor.god_host_jarvis_mem
+
+  # ======================================================================
+  - title: Proxmox
+    path: proxmox
+    icon: mdi:server-network
+    badges: []
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: "## Cluster `nexus-cluster` · 2 nodos · API token god@pve!godmode"
+
+          - type: glance
+            title: Zeratul
+            columns: 4
+            entities:
+              - entity: sensor.god_pve_zeratul_status
+                name: status
+              - entity: sensor.god_pve_zeratul_cpu_pct
+                name: CPU
+              - entity: sensor.god_pve_zeratul_mem_pct
+                name: MEM
+              - entity: sensor.god_pve_zeratul_uptime_h
+                name: uptime h
+
+          - type: glance
+            title: H340-ino2
+            columns: 3
+            entities:
+              - entity: sensor.god_pve_h340_status
+                name: status
+              - entity: sensor.god_pve_h340_cpu_pct
+                name: CPU
+              - entity: sensor.god_pve_h340_mem_pct
+                name: MEM
+
+          - type: entities
+            title: Estado VMs / CTs
+            entities:
+              - sensor.god_pve_vm_100_status
+              - sensor.god_pve_vm_102_status
+              - sensor.god_pve_vm_105_status
+              - sensor.god_pve_ct_101_status
+              - sensor.god_pve_ct_103_status
+              - sensor.god_pve_ct_104_status
+              - sensor.god_pve_ct_171_status
+
+  # ======================================================================
+  - title: Config
+    path: config
+    icon: mdi:tune
+    badges: []
+    cards:
+      - type: markdown
+        content: |
+          ## GOD Mode · configuración
+          Helpers para ajustar comportamiento del dashboard y alertas.
+
+      - type: entities
+        title: Pilas / batterías
+        entities:
+          - input_number.god_battery_threshold_pct
+          - input_select.god_battery_reminder_freq
+          - input_datetime.god_battery_reminder_time
+
+      - type: entities
+        title: Telegram
+        entities:
+          - input_text.god_telegram_chat_id
+
+      - type: entities
+        title: Smoke test
+        entities:
+          - sensor.god_mode_loaded
