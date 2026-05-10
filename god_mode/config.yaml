@@ -1,0 +1,71 @@
+---
+name: GOD Mode
+slug: god_mode
+version: "0.2.0"
+description: >-
+  Centralized homelab monitoring for Home Assistant. Collects CPU, RAM,
+  disk, temperature, updates and uptime from your Linux hosts (Proxmox,
+  bare-metal, LXC, RPi) via Ansible. Auto-installs Lovelace dashboard
+  and YAML packages on /config. Designed to run inside HA — no external
+  collector needed.
+url: "https://github.com/hirofairlane/ha-god-mode"
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: services
+boot: auto
+hassio_api: true
+hassio_role: manager
+homeassistant_api: true
+host_network: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:eye-outline
+panel_title: GOD Mode
+ports:
+  9876/tcp: 9876
+ports_description:
+  9876/tcp: "REST collector API (consumed by HA `rest:` integration)"
+map:
+  - addon_config:rw
+  - homeassistant_config:rw
+options:
+  poll_interval: 60
+  ssh_user: root
+  install_packages: true
+  pve:
+    enabled: true
+    host: "192.168.1.122"
+    token_id: "god@pve!godmode"
+    token_secret: ""
+  hosts:
+    - name: zeratul
+      addr: "192.168.1.122"
+      user: root
+    - name: plex
+      addr: "192.168.1.123"
+      user: root
+    - name: frigate
+      addr: "192.168.1.170"
+      user: sergio
+    - name: h340
+      addr: "192.168.1.129"
+      user: root
+    - name: crafty
+      addr: "192.168.1.36"
+      user: root
+schema:
+  poll_interval: int(15,3600)
+  ssh_user: str
+  install_packages: bool
+  pve:
+    enabled: bool
+    host: str
+    token_id: str
+    token_secret: password
+  hosts:
+    - name: str
+      addr: str
+      user: str?
+      port: port?

@@ -1,0 +1,40 @@
+---
+# =====================================================================
+#  gather.yml - polling playbook
+#
+#  For each host: open SSH, gather minimal metrics in a single shell
+#  command (~50ms after connection), publish as ansible_fact `god_metric`
+#  (a JSON dict). The collector parses these from the ansible-playbook
+#  --output=json result.
+# =====================================================================
+- name: GOD Mode metrics gather
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  strategy: free
+  tasks:
+    - name: Run agent (one-shot)
+      ansible.builtin.shell: |
+        if [ -x /usr/local/bin/god-agent ]; then
+          /usr/local/bin/god-agent
+        elif [ -x "$HOME/.local/bin/god-agent" ]; then
+          "$HOME/.local/bin/god-agent"
+        else
+          echo '{"_ok":false,"_error":"agent_not_installed"}'
+        fi
+      register: out
+      changed_when: false
+      failed_when: false
+      timeout: 8
+
+    - name: Set fact god_metric (parsed)
+      ansible.builtin.set_fact:
+        god_metric: "{{ out.stdout | from_json }}"
+      when: out.stdout is defined and out.stdout.strip().startswith('{')
+
+    - name: Set fact god_metric (raw error)
+      ansible.builtin.set_fact:
+        god_metric:
+          _ok: false
+          _error: "{{ out.stderr | default(out.stdout, true) | default('no output', true) | truncate(200) }}"
+      when: god_metric is not defined

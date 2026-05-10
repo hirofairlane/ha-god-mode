@@ -1,0 +1,156 @@
+# =====================================================================
+#  god_hosts_linux.yaml - metricas de hosts Linux via collector REST
+#
+#  Source: collector god-collector.service en LXC 104 (192.168.1.70:9876)
+#  Endpoint: GET /api/hosts -> dict { name: { cpu_pct, mem_pct, ... } }
+#  Scan: 60s alineado con poll del collector.
+#
+#  Hosts: zeratul, plex, frigate, h340, crafty, jarvis (LXC 104)
+# =====================================================================
+
+rest:
+  - resource: http://localhost:9876/api/hosts
+    scan_interval: 60
+    sensor:
+      # ---- ZERATUL ------------------------------------------------------
+      - name: "god_host_zeratul_cpu"
+        unique_id: god_host_zeratul_cpu
+        value_template: "{{ value_json.zeratul.cpu_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:cpu-64-bit
+      - name: "god_host_zeratul_mem"
+        unique_id: god_host_zeratul_mem
+        value_template: "{{ value_json.zeratul.mem_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:memory
+      - name: "god_host_zeratul_disk"
+        unique_id: god_host_zeratul_disk
+        value_template: "{{ value_json.zeratul.disk_max_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:harddisk
+      - name: "god_host_zeratul_temp"
+        unique_id: god_host_zeratul_temp
+        value_template: "{{ value_json.zeratul.temp_max_c | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer
+      - name: "god_host_zeratul_load"
+        unique_id: god_host_zeratul_load
+        value_template: "{{ value_json.zeratul.load_1m | default(0) }}"
+        icon: mdi:gauge
+      - name: "god_host_zeratul_updates"
+        unique_id: god_host_zeratul_updates
+        value_template: "{{ value_json.zeratul.updates_pending | default(0) }}"
+        icon: mdi:package-up
+
+      # ---- PLEX (LXC 101) ----------------------------------------------
+      - name: "god_host_plex_cpu"
+        unique_id: god_host_plex_cpu
+        value_template: "{{ value_json.plex.cpu_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:cpu-64-bit
+      - name: "god_host_plex_mem"
+        unique_id: god_host_plex_mem
+        value_template: "{{ value_json.plex.mem_pct | default(0) }}"
+        unit_of_measurement: "%"
+      - name: "god_host_plex_disk"
+        unique_id: god_host_plex_disk
+        value_template: "{{ value_json.plex.disk_max_pct | default(0) }}"
+        unit_of_measurement: "%"
+      - name: "god_host_plex_updates"
+        unique_id: god_host_plex_updates
+        value_template: "{{ value_json.plex.updates_pending | default(0) }}"
+
+      # ---- FRIGATE -----------------------------------------------------
+      - name: "god_host_frigate_cpu"
+        unique_id: god_host_frigate_cpu
+        value_template: "{{ value_json.frigate.cpu_pct | default(0) }}"
+        unit_of_measurement: "%"
+      - name: "god_host_frigate_mem"
+        unique_id: god_host_frigate_mem
+        value_template: "{{ value_json.frigate.mem_pct | default(0) }}"
+        unit_of_measurement: "%"
+      - name: "god_host_frigate_disk"
+        unique_id: god_host_frigate_disk
+        value_template: "{{ value_json.frigate.disk_max_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:harddisk-plus
+      - name: "god_host_frigate_temp"
+        unique_id: god_host_frigate_temp
+        value_template: "{{ value_json.frigate.temp_max_c | default(0) }}"
+        unit_of_measurement: "°C"
+      - name: "god_host_frigate_updates"
+        unique_id: god_host_frigate_updates
+        value_template: "{{ value_json.frigate.updates_pending | default(0) }}"
+
+      # ---- H340 --------------------------------------------------------
+      - name: "god_host_h340_cpu"
+        unique_id: god_host_h340_cpu
+        value_template: "{{ value_json.h340.cpu_pct | default(0) }}"
+        unit_of_measurement: "%"
+      - name: "god_host_h340_mem"
+        unique_id: god_host_h340_mem
+        value_template: "{{ value_json.h340.mem_pct | default(0) }}"
+        unit_of_measurement: "%"
+      - name: "god_host_h340_temp"
+        unique_id: god_host_h340_temp
+        value_template: "{{ value_json.h340.temp_max_c | default(0) }}"
+        unit_of_measurement: "°C"
+      - name: "god_host_h340_updates"
+        unique_id: god_host_h340_updates
+        value_template: "{{ value_json.h340.updates_pending | default(0) }}"
+
+      # ---- CRAFTY (LXC 103) --------------------------------------------
+      - name: "god_host_crafty_cpu"
+        unique_id: god_host_crafty_cpu
+        value_template: "{{ value_json.crafty.cpu_pct | default(0) }}"
+        unit_of_measurement: "%"
+      - name: "god_host_crafty_mem"
+        unique_id: god_host_crafty_mem
+        value_template: "{{ value_json.crafty.mem_pct | default(0) }}"
+        unit_of_measurement: "%"
+
+      # ---- JARVIS (LXC 104) --------------------------------------------
+      - name: "god_host_jarvis_cpu"
+        unique_id: god_host_jarvis_cpu
+        value_template: "{{ value_json.jarvis.cpu_pct | default(0) }}"
+        unit_of_measurement: "%"
+      - name: "god_host_jarvis_mem"
+        unique_id: god_host_jarvis_mem
+        value_template: "{{ value_json.jarvis.mem_pct | default(0) }}"
+        unit_of_measurement: "%"
+
+# ---- Binary sensors derivados (online + agent OK) ---------------------
+# Usamos la modern template syntax con state_class para que funcionen
+# bien tras restart (problema clasico de timing en binary_sensor.platform)
+template:
+  - sensor:
+      - name: "god_host_zeratul_uptime"
+        unique_id: god_host_zeratul_uptime_h
+        state: "{{ (states('sensor.god_host_zeratul_cpu') is defined) | string }}"
+        # placeholder - los sensores rest reportan freshness via _polled_at
+
+  - binary_sensor:
+      - name: "god_host_zeratul_online"
+        unique_id: god_host_zeratul_online
+        device_class: connectivity
+        state: "{{ states('sensor.god_host_zeratul_cpu') not in ['unknown','unavailable'] }}"
+      - name: "god_host_plex_online"
+        unique_id: god_host_plex_online
+        device_class: connectivity
+        state: "{{ states('sensor.god_host_plex_cpu') not in ['unknown','unavailable'] }}"
+      - name: "god_host_frigate_online"
+        unique_id: god_host_frigate_online
+        device_class: connectivity
+        state: "{{ states('sensor.god_host_frigate_cpu') not in ['unknown','unavailable'] }}"
+      - name: "god_host_h340_online"
+        unique_id: god_host_h340_online
+        device_class: connectivity
+        state: "{{ states('sensor.god_host_h340_cpu') not in ['unknown','unavailable'] }}"
+      - name: "god_host_crafty_online"
+        unique_id: god_host_crafty_online
+        device_class: connectivity
+        state: "{{ states('sensor.god_host_crafty_cpu') not in ['unknown','unavailable'] }}"
+      - name: "god_host_jarvis_online"
+        unique_id: god_host_jarvis_online
+        device_class: connectivity
+        state: "{{ states('sensor.god_host_jarvis_cpu') not in ['unknown','unavailable'] }}"
