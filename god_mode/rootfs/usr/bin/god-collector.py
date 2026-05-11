@@ -30,6 +30,7 @@ METRICS_DIR  = DATA_DIR / "metrics"
 OPTS_FILE    = DATA_DIR / "options.json"
 INV_FILE     = DATA_DIR / "ansible" / "inventory.yml"
 CFG_FILE     = DATA_DIR / "ansible" / "ansible.cfg"
+CATEGORIES_FILE = DATA_DIR / "ansible" / "categories.json"
 PLAYBOOK     = "/usr/share/god-mode/ansible/playbooks/gather.yml"
 PUBKEY_FILE  = DATA_DIR / ".ssh" / "id_ed25519.pub"
 
@@ -72,8 +73,27 @@ def run_playbook() -> int:
         return -1
 
 
+def load_categories() -> dict[str, str]:
+    if CATEGORIES_FILE.exists():
+        try:
+            return json.loads(CATEGORIES_FILE.read_text())
+        except Exception:
+            pass
+    return {}
+
+
 def load_metrics_from_disk() -> dict[str, dict]:
     out = {}
+    cats = load_categories()
+    # Include even hosts that haven't replied yet, so the dashboard can
+    # render them as offline.
+    for name, cat in cats.items():
+        out[name] = {
+            "_ok": False,
+            "_error": "not_polled_yet",
+            "_polled_at": 0,
+            "_category": cat,
+        }
     if not METRICS_DIR.exists():
         return out
     for f in METRICS_DIR.glob("*.json"):
@@ -82,9 +102,10 @@ def load_metrics_from_disk() -> dict[str, dict]:
             d = json.loads(f.read_text())
             d["_ok"] = bool(d.get("_ok", True)) and "_error" not in d
             d["_polled_at"] = int(f.stat().st_mtime)
+            d["_category"] = cats.get(name, "uncategorized")
             out[name] = d
         except Exception as e:
-            out[name] = {"_ok": False, "_error": f"parse: {e}"}
+            out[name] = {"_ok": False, "_error": f"parse: {e}", "_category": cats.get(name, "uncategorized")}
     return out
 
 

@@ -1,219 +1,580 @@
-# =====================================================================
-#  god_mode.yaml - dashboard Lovelace de GOD Mode
-#  Cargado via lovelace.dashboards.god-mode (configuration.yaml)
-#  Sin requerir HACS - usa solo cards built-in de HA.
-# =====================================================================
 title: GOD Mode
 views:
-  # ======================================================================
   - title: Overview
     path: overview
     icon: mdi:eye-outline
-    badges: []
     cards:
       - type: markdown
         content: |
           # GOD Mode · Overview
-          _Estado de toda la infraestructura en tiempo real_
+          _Aggregated homelab health_
 
       - type: glance
-        title: Cluster Proxmox
-        show_state: true
+        title: Online hosts per category
+        columns: 4
+        entities:
+          - entity: binary_sensor.god_host_zeratul_online
+            name: "Proxmox cluster"
+          - entity: binary_sensor.god_host_plex_online
+            name: "Linux servers"
+          - entity: binary_sensor.god_host_nuc_online
+            name: "SBCs (RPis & NUC)"
+          - entity: binary_sensor.god_host_manjaro_desktop_online
+            name: "Linux desktops"
+          - entity: binary_sensor.god_host_gigabyte_gaming_online
+            name: "Windows desktops"
+          - entity: binary_sensor.god_host_macbook_pro_online
+            name: "macOS"
+          - entity: binary_sensor.god_host_openwrt_principal_online
+            name: "Network: OpenWrt"
+
+      - type: history-graph
+        title: CPU all hosts (%)
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_zeratul_cpu
+          - entity: sensor.god_host_h340_cpu
+          - entity: sensor.god_host_plex_cpu
+          - entity: sensor.god_host_frigate_cpu
+          - entity: sensor.god_host_crafty_cpu
+          - entity: sensor.god_host_jarvis_cpu
+          - entity: sensor.god_host_nuc_cpu
+          - entity: sensor.god_host_rpi4_8gb_cpu
+          - entity: sensor.god_host_pikvm_cpu
+          - entity: sensor.god_host_manjaro_desktop_cpu
+          - entity: sensor.god_host_gigabyte_gaming_cpu
+          - entity: sensor.god_host_macbook_pro_cpu
+          - entity: sensor.god_host_imac101_cpu
+          - entity: sensor.god_host_openwrt_principal_cpu
+          - entity: sensor.god_host_openwrt_sotano_cpu
+          - entity: sensor.god_host_openwrt_arriba_cpu
+          - entity: sensor.god_host_openwrt_caseta_cpu
+      - type: history-graph
+        title: Memory all hosts (%)
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_zeratul_mem
+          - entity: sensor.god_host_h340_mem
+          - entity: sensor.god_host_plex_mem
+          - entity: sensor.god_host_frigate_mem
+          - entity: sensor.god_host_crafty_mem
+          - entity: sensor.god_host_jarvis_mem
+          - entity: sensor.god_host_nuc_mem
+          - entity: sensor.god_host_rpi4_8gb_mem
+          - entity: sensor.god_host_pikvm_mem
+          - entity: sensor.god_host_manjaro_desktop_mem
+          - entity: sensor.god_host_gigabyte_gaming_mem
+          - entity: sensor.god_host_macbook_pro_mem
+          - entity: sensor.god_host_imac101_mem
+          - entity: sensor.god_host_openwrt_principal_mem
+          - entity: sensor.god_host_openwrt_sotano_mem
+          - entity: sensor.god_host_openwrt_arriba_mem
+          - entity: sensor.god_host_openwrt_caseta_mem
+      - type: history-graph
+        title: Disk usage (%)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.god_host_zeratul_disk
+          - entity: sensor.god_host_h340_disk
+          - entity: sensor.god_host_plex_disk
+          - entity: sensor.god_host_frigate_disk
+          - entity: sensor.god_host_crafty_disk
+          - entity: sensor.god_host_jarvis_disk
+          - entity: sensor.god_host_nuc_disk
+          - entity: sensor.god_host_rpi4_8gb_disk
+          - entity: sensor.god_host_pikvm_disk
+          - entity: sensor.god_host_manjaro_desktop_disk
+          - entity: sensor.god_host_gigabyte_gaming_disk
+          - entity: sensor.god_host_macbook_pro_disk
+          - entity: sensor.god_host_imac101_disk
+          - entity: sensor.god_host_openwrt_principal_disk
+          - entity: sensor.god_host_openwrt_sotano_disk
+          - entity: sensor.god_host_openwrt_arriba_disk
+          - entity: sensor.god_host_openwrt_caseta_disk
+      - type: history-graph
+        title: Temperatures (°C)
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_zeratul_temp
+          - entity: sensor.god_host_h340_temp
+          - entity: sensor.god_host_plex_temp
+          - entity: sensor.god_host_frigate_temp
+          - entity: sensor.god_host_crafty_temp
+          - entity: sensor.god_host_jarvis_temp
+          - entity: sensor.god_host_nuc_temp
+          - entity: sensor.god_host_rpi4_8gb_temp
+          - entity: sensor.god_host_pikvm_temp
+          - entity: sensor.god_host_manjaro_desktop_temp
+          - entity: sensor.god_host_gigabyte_gaming_temp
+          - entity: sensor.god_host_macbook_pro_temp
+          - entity: sensor.god_host_imac101_temp
+          - entity: sensor.god_host_openwrt_principal_temp
+          - entity: sensor.god_host_openwrt_sotano_temp
+          - entity: sensor.god_host_openwrt_arriba_temp
+          - entity: sensor.god_host_openwrt_caseta_temp
+  - title: Proxmox cluster
+    path: pve_node
+    icon: mdi:server-network
+    cards:
+      - type: markdown
+        content: "## Proxmox cluster"
+      - type: glance
+        title: Status
+        columns: 2
+        entities:
+          - entity: binary_sensor.god_host_zeratul_online
+            name: "Proxmox zeratul"
+          - entity: binary_sensor.god_host_h340_online
+            name: "Proxmox h340"
+      - type: history-graph
+        title: "Proxmox cluster - CPU %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_zeratul_cpu
+          - entity: sensor.god_host_h340_cpu
+      - type: history-graph
+        title: "Proxmox cluster - RAM %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_zeratul_mem
+          - entity: sensor.god_host_h340_mem
+      - type: history-graph
+        title: "Proxmox cluster - Disk %"
+        hours_to_show: 24
+        entities:
+          - entity: sensor.god_host_zeratul_disk
+          - entity: sensor.god_host_h340_disk
+      - type: history-graph
+        title: "Proxmox cluster - Temp °C"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_zeratul_temp
+          - entity: sensor.god_host_h340_temp
+      - type: entities
+        title: Current snapshot
+        # Proxmox zeratul
+        # Proxmox h340
+        entities:
+          - sensor.god_host_zeratul_cpu
+          - sensor.god_host_zeratul_mem
+          - sensor.god_host_zeratul_disk
+          - sensor.god_host_zeratul_temp
+          - sensor.god_host_zeratul_updates
+          - sensor.god_host_h340_cpu
+          - sensor.god_host_h340_mem
+          - sensor.god_host_h340_disk
+          - sensor.god_host_h340_temp
+          - sensor.god_host_h340_updates
+  - title: Linux servers
+    path: server
+    icon: mdi:server
+    cards:
+      - type: markdown
+        content: "## Linux servers"
+      - type: glance
+        title: Status
+        columns: 4
+        entities:
+          - entity: binary_sensor.god_host_plex_online
+            name: "plex (NAS LXC)"
+          - entity: binary_sensor.god_host_frigate_online
+            name: "Frigate NVR"
+          - entity: binary_sensor.god_host_crafty_online
+            name: "Minecraft LXC"
+          - entity: binary_sensor.god_host_jarvis_online
+            name: "Jarvis LXC"
+      - type: history-graph
+        title: "Linux servers - CPU %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_plex_cpu
+          - entity: sensor.god_host_frigate_cpu
+          - entity: sensor.god_host_crafty_cpu
+          - entity: sensor.god_host_jarvis_cpu
+      - type: history-graph
+        title: "Linux servers - RAM %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_plex_mem
+          - entity: sensor.god_host_frigate_mem
+          - entity: sensor.god_host_crafty_mem
+          - entity: sensor.god_host_jarvis_mem
+      - type: history-graph
+        title: "Linux servers - Disk %"
+        hours_to_show: 24
+        entities:
+          - entity: sensor.god_host_plex_disk
+          - entity: sensor.god_host_frigate_disk
+          - entity: sensor.god_host_crafty_disk
+          - entity: sensor.god_host_jarvis_disk
+      - type: history-graph
+        title: "Linux servers - Temp °C"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_plex_temp
+          - entity: sensor.god_host_frigate_temp
+          - entity: sensor.god_host_crafty_temp
+          - entity: sensor.god_host_jarvis_temp
+      - type: entities
+        title: Current snapshot
+        # plex (NAS LXC)
+        # Frigate NVR
+        # Minecraft LXC
+        # Jarvis LXC
+        entities:
+          - sensor.god_host_plex_cpu
+          - sensor.god_host_plex_mem
+          - sensor.god_host_plex_disk
+          - sensor.god_host_plex_temp
+          - sensor.god_host_plex_updates
+          - sensor.god_host_frigate_cpu
+          - sensor.god_host_frigate_mem
+          - sensor.god_host_frigate_disk
+          - sensor.god_host_frigate_temp
+          - sensor.god_host_frigate_updates
+          - sensor.god_host_crafty_cpu
+          - sensor.god_host_crafty_mem
+          - sensor.god_host_crafty_disk
+          - sensor.god_host_crafty_temp
+          - sensor.god_host_crafty_updates
+          - sensor.god_host_jarvis_cpu
+          - sensor.god_host_jarvis_mem
+          - sensor.god_host_jarvis_disk
+          - sensor.god_host_jarvis_temp
+          - sensor.god_host_jarvis_updates
+  - title: SBCs (RPis & NUC)
+    path: sbc
+    icon: mdi:raspberry-pi
+    cards:
+      - type: markdown
+        content: "## SBCs (RPis & NUC)"
+      - type: glance
+        title: Status
+        columns: 3
+        entities:
+          - entity: binary_sensor.god_host_nuc_online
+            name: "NUC"
+          - entity: binary_sensor.god_host_rpi4_8gb_online
+            name: "Rpi4 8GB"
+          - entity: binary_sensor.god_host_pikvm_online
+            name: "PiKVM"
+      - type: history-graph
+        title: "SBCs (RPis & NUC) - CPU %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_nuc_cpu
+          - entity: sensor.god_host_rpi4_8gb_cpu
+          - entity: sensor.god_host_pikvm_cpu
+      - type: history-graph
+        title: "SBCs (RPis & NUC) - RAM %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_nuc_mem
+          - entity: sensor.god_host_rpi4_8gb_mem
+          - entity: sensor.god_host_pikvm_mem
+      - type: history-graph
+        title: "SBCs (RPis & NUC) - Disk %"
+        hours_to_show: 24
+        entities:
+          - entity: sensor.god_host_nuc_disk
+          - entity: sensor.god_host_rpi4_8gb_disk
+          - entity: sensor.god_host_pikvm_disk
+      - type: history-graph
+        title: "SBCs (RPis & NUC) - Temp °C"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_nuc_temp
+          - entity: sensor.god_host_rpi4_8gb_temp
+          - entity: sensor.god_host_pikvm_temp
+      - type: entities
+        title: Current snapshot
+        # NUC
+        # Rpi4 8GB
+        # PiKVM
+        entities:
+          - sensor.god_host_nuc_cpu
+          - sensor.god_host_nuc_mem
+          - sensor.god_host_nuc_disk
+          - sensor.god_host_nuc_temp
+          - sensor.god_host_nuc_updates
+          - sensor.god_host_rpi4_8gb_cpu
+          - sensor.god_host_rpi4_8gb_mem
+          - sensor.god_host_rpi4_8gb_disk
+          - sensor.god_host_rpi4_8gb_temp
+          - sensor.god_host_rpi4_8gb_updates
+          - sensor.god_host_pikvm_cpu
+          - sensor.god_host_pikvm_mem
+          - sensor.god_host_pikvm_disk
+          - sensor.god_host_pikvm_temp
+          - sensor.god_host_pikvm_updates
+  - title: Linux desktops
+    path: desktop_linux
+    icon: mdi:linux
+    cards:
+      - type: markdown
+        content: "## Linux desktops"
+      - type: glance
+        title: Status
+        columns: 1
+        entities:
+          - entity: binary_sensor.god_host_manjaro_desktop_online
+            name: "Manjaro desktop VM"
+      - type: history-graph
+        title: "Linux desktops - CPU %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_manjaro_desktop_cpu
+      - type: history-graph
+        title: "Linux desktops - RAM %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_manjaro_desktop_mem
+      - type: history-graph
+        title: "Linux desktops - Disk %"
+        hours_to_show: 24
+        entities:
+          - entity: sensor.god_host_manjaro_desktop_disk
+      - type: history-graph
+        title: "Linux desktops - Temp °C"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_manjaro_desktop_temp
+      - type: entities
+        title: Current snapshot
+        # Manjaro desktop VM
+        entities:
+          - sensor.god_host_manjaro_desktop_cpu
+          - sensor.god_host_manjaro_desktop_mem
+          - sensor.god_host_manjaro_desktop_disk
+          - sensor.god_host_manjaro_desktop_temp
+          - sensor.god_host_manjaro_desktop_updates
+  - title: Windows desktops
+    path: desktop_win
+    icon: mdi:microsoft-windows
+    cards:
+      - type: markdown
+        content: "## Windows desktops"
+      - type: glance
+        title: Status
+        columns: 1
+        entities:
+          - entity: binary_sensor.god_host_gigabyte_gaming_online
+            name: "Gigabyte W11"
+      - type: history-graph
+        title: "Windows desktops - CPU %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_gigabyte_gaming_cpu
+      - type: history-graph
+        title: "Windows desktops - RAM %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_gigabyte_gaming_mem
+      - type: history-graph
+        title: "Windows desktops - Disk %"
+        hours_to_show: 24
+        entities:
+          - entity: sensor.god_host_gigabyte_gaming_disk
+      - type: history-graph
+        title: "Windows desktops - Temp °C"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_gigabyte_gaming_temp
+      - type: entities
+        title: Current snapshot
+        # Gigabyte W11
+        entities:
+          - sensor.god_host_gigabyte_gaming_cpu
+          - sensor.god_host_gigabyte_gaming_mem
+          - sensor.god_host_gigabyte_gaming_disk
+          - sensor.god_host_gigabyte_gaming_temp
+          - sensor.god_host_gigabyte_gaming_updates
+  - title: macOS
+    path: desktop_mac
+    icon: mdi:apple
+    cards:
+      - type: markdown
+        content: "## macOS"
+      - type: glance
+        title: Status
+        columns: 2
+        entities:
+          - entity: binary_sensor.god_host_macbook_pro_online
+            name: "MacBook Pro"
+          - entity: binary_sensor.god_host_imac101_online
+            name: "iMac"
+      - type: history-graph
+        title: "macOS - CPU %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_macbook_pro_cpu
+          - entity: sensor.god_host_imac101_cpu
+      - type: history-graph
+        title: "macOS - RAM %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_macbook_pro_mem
+          - entity: sensor.god_host_imac101_mem
+      - type: history-graph
+        title: "macOS - Disk %"
+        hours_to_show: 24
+        entities:
+          - entity: sensor.god_host_macbook_pro_disk
+          - entity: sensor.god_host_imac101_disk
+      - type: history-graph
+        title: "macOS - Temp °C"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_macbook_pro_temp
+          - entity: sensor.god_host_imac101_temp
+      - type: entities
+        title: Current snapshot
+        # MacBook Pro
+        # iMac
+        entities:
+          - sensor.god_host_macbook_pro_cpu
+          - sensor.god_host_macbook_pro_mem
+          - sensor.god_host_macbook_pro_disk
+          - sensor.god_host_macbook_pro_temp
+          - sensor.god_host_macbook_pro_updates
+          - sensor.god_host_imac101_cpu
+          - sensor.god_host_imac101_mem
+          - sensor.god_host_imac101_disk
+          - sensor.god_host_imac101_temp
+          - sensor.god_host_imac101_updates
+  - title: Network: OpenWrt
+    path: network
+    icon: mdi:router-network
+    cards:
+      - type: markdown
+        content: "## Network: OpenWrt"
+      - type: glance
+        title: Status
+        columns: 4
+        entities:
+          - entity: binary_sensor.god_host_openwrt_principal_online
+            name: "OpenWrt Principal"
+          - entity: binary_sensor.god_host_openwrt_sotano_online
+            name: "Sotano"
+          - entity: binary_sensor.god_host_openwrt_arriba_online
+            name: "Arriba"
+          - entity: binary_sensor.god_host_openwrt_caseta_online
+            name: "Caseta"
+      - type: history-graph
+        title: "Network: OpenWrt - CPU %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_openwrt_principal_cpu
+          - entity: sensor.god_host_openwrt_sotano_cpu
+          - entity: sensor.god_host_openwrt_arriba_cpu
+          - entity: sensor.god_host_openwrt_caseta_cpu
+      - type: history-graph
+        title: "Network: OpenWrt - RAM %"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_openwrt_principal_mem
+          - entity: sensor.god_host_openwrt_sotano_mem
+          - entity: sensor.god_host_openwrt_arriba_mem
+          - entity: sensor.god_host_openwrt_caseta_mem
+      - type: history-graph
+        title: "Network: OpenWrt - Disk %"
+        hours_to_show: 24
+        entities:
+          - entity: sensor.god_host_openwrt_principal_disk
+          - entity: sensor.god_host_openwrt_sotano_disk
+          - entity: sensor.god_host_openwrt_arriba_disk
+          - entity: sensor.god_host_openwrt_caseta_disk
+      - type: history-graph
+        title: "Network: OpenWrt - Temp °C"
+        hours_to_show: 6
+        entities:
+          - entity: sensor.god_host_openwrt_principal_temp
+          - entity: sensor.god_host_openwrt_sotano_temp
+          - entity: sensor.god_host_openwrt_arriba_temp
+          - entity: sensor.god_host_openwrt_caseta_temp
+      - type: entities
+        title: Current snapshot
+        # OpenWrt Principal
+        # Sotano
+        # Arriba
+        # Caseta
+        entities:
+          - sensor.god_host_openwrt_principal_cpu
+          - sensor.god_host_openwrt_principal_mem
+          - sensor.god_host_openwrt_principal_disk
+          - sensor.god_host_openwrt_principal_temp
+          - sensor.god_host_openwrt_principal_updates
+          - sensor.god_host_openwrt_sotano_cpu
+          - sensor.god_host_openwrt_sotano_mem
+          - sensor.god_host_openwrt_sotano_disk
+          - sensor.god_host_openwrt_sotano_temp
+          - sensor.god_host_openwrt_sotano_updates
+          - sensor.god_host_openwrt_arriba_cpu
+          - sensor.god_host_openwrt_arriba_mem
+          - sensor.god_host_openwrt_arriba_disk
+          - sensor.god_host_openwrt_arriba_temp
+          - sensor.god_host_openwrt_arriba_updates
+          - sensor.god_host_openwrt_caseta_cpu
+          - sensor.god_host_openwrt_caseta_mem
+          - sensor.god_host_openwrt_caseta_disk
+          - sensor.god_host_openwrt_caseta_temp
+          - sensor.god_host_openwrt_caseta_updates
+  - title: PVE detail
+    path: pve
+    icon: mdi:server-network
+    cards:
+      - type: markdown
+        content: "## PVE cluster · VMs and containers"
+      - type: glance
+        title: Cluster
         columns: 4
         entities:
           - entity: sensor.god_pve_zeratul_status
-            name: Zeratul
+            name: zeratul
           - entity: sensor.god_pve_h340_status
-            name: H340
+            name: h340
           - entity: sensor.god_pve_vms_running
-            name: VMs run
+            name: VMs running
           - entity: sensor.god_pve_cts_running
-            name: CTs run
-
+            name: CTs running
       - type: entities
-        title: Hosts online (24/7 + on-demand)
-        show_header_toggle: false
-        entities:
-          - entity: binary_sensor.god_host_zeratul_online
-            name: zeratul (Proxmox host)
-          - entity: binary_sensor.god_host_plex_online
-            name: plex / LXC 101 (NAS 18T)
-          - entity: binary_sensor.god_host_frigate_online
-            name: frigate (NVR físico)
-          - entity: binary_sensor.god_host_h340_online
-            name: h340 (Proxmox failback)
-          - entity: binary_sensor.god_host_crafty_online
-            name: crafty / LXC 103 (Minecraft)
-          - entity: binary_sensor.god_host_jarvis_online
-            name: jarvis / LXC 104 (Ollama)
-
-      - type: entities
-        title: VMs / Containers
-        show_header_toggle: false
+        title: VMs / Containers status
         entities:
           - entity: sensor.god_pve_vm_100_status
-            name: VM 100 · HA prod
           - entity: sensor.god_pve_vm_102_status
-            name: VM 102 · HA testing
           - entity: sensor.god_pve_vm_105_status
-            name: VM 105 · manjaro-desktop
           - entity: sensor.god_pve_ct_101_status
-            name: LXC 101 · plex
           - entity: sensor.god_pve_ct_103_status
-            name: LXC 103 · crafty
           - entity: sensor.god_pve_ct_104_status
-            name: LXC 104 · jarvis
           - entity: sensor.god_pve_ct_171_status
-            name: LXC 171 · frigate-docker
-
-      - type: gauge
-        name: Zeratul CPU
-        entity: sensor.god_pve_zeratul_cpu_pct
-        min: 0
-        max: 100
-        severity:
-          green: 0
-          yellow: 60
-          red: 85
-
-      - type: gauge
-        name: Zeratul RAM
-        entity: sensor.god_pve_zeratul_mem_pct
-        min: 0
-        max: 100
-        severity:
-          green: 0
-          yellow: 70
-          red: 90
-
-  # ======================================================================
-  - title: Hosts
-    path: hosts
-    icon: mdi:server
-    badges: []
-    cards:
-      - type: vertical-stack
-        cards:
-          - type: markdown
-            content: "## Métricas en vivo (poll cada 60s desde LXC 104)"
-
-          - type: entities
-            title: zeratul (Proxmox host, i5-14400 + 64 GB)
-            entities:
-              - sensor.god_host_zeratul_cpu
-              - sensor.god_host_zeratul_mem
-              - sensor.god_host_zeratul_disk
-              - sensor.god_host_zeratul_temp
-              - sensor.god_host_zeratul_load
-              - sensor.god_host_zeratul_updates
-              - sensor.god_pve_zeratul_uptime_h
-
-          - type: entities
-            title: plex (LXC 101, 32 GB · NAS 18T)
-            entities:
-              - sensor.god_host_plex_cpu
-              - sensor.god_host_plex_mem
-              - sensor.god_host_plex_disk
-              - sensor.god_host_plex_updates
-
-          - type: entities
-            title: frigate (Dell · NVR · 16 GB)
-            entities:
-              - sensor.god_host_frigate_cpu
-              - sensor.god_host_frigate_mem
-              - sensor.god_host_frigate_disk
-              - sensor.god_host_frigate_temp
-              - sensor.god_host_frigate_updates
-
-          - type: entities
-            title: h340 (HP MicroServer Gen8 · failback)
-            entities:
-              - sensor.god_host_h340_cpu
-              - sensor.god_host_h340_mem
-              - sensor.god_host_h340_temp
-              - sensor.god_host_h340_updates
-
-          - type: entities
-            title: crafty (LXC 103, 4 GB · Minecraft)
-            entities:
-              - sensor.god_host_crafty_cpu
-              - sensor.god_host_crafty_mem
-
-          - type: entities
-            title: jarvis (LXC 104, 16 GB · Ollama + OpenClaw)
-            entities:
-              - sensor.god_host_jarvis_cpu
-              - sensor.god_host_jarvis_mem
-
-  # ======================================================================
-  - title: Proxmox
-    path: proxmox
-    icon: mdi:server-network
-    badges: []
-    cards:
-      - type: vertical-stack
-        cards:
-          - type: markdown
-            content: "## Cluster `nexus-cluster` · 2 nodos · API token god@pve!godmode"
-
-          - type: glance
-            title: Zeratul
-            columns: 4
-            entities:
-              - entity: sensor.god_pve_zeratul_status
-                name: status
-              - entity: sensor.god_pve_zeratul_cpu_pct
-                name: CPU
-              - entity: sensor.god_pve_zeratul_mem_pct
-                name: MEM
-              - entity: sensor.god_pve_zeratul_uptime_h
-                name: uptime h
-
-          - type: glance
-            title: H340-ino2
-            columns: 3
-            entities:
-              - entity: sensor.god_pve_h340_status
-                name: status
-              - entity: sensor.god_pve_h340_cpu_pct
-                name: CPU
-              - entity: sensor.god_pve_h340_mem_pct
-                name: MEM
-
-          - type: entities
-            title: Estado VMs / CTs
-            entities:
-              - sensor.god_pve_vm_100_status
-              - sensor.god_pve_vm_102_status
-              - sensor.god_pve_vm_105_status
-              - sensor.god_pve_ct_101_status
-              - sensor.god_pve_ct_103_status
-              - sensor.god_pve_ct_104_status
-              - sensor.god_pve_ct_171_status
-
-  # ======================================================================
+      - type: history-graph
+        title: PVE nodes CPU %
+        hours_to_show: 12
+        entities:
+          - sensor.god_pve_zeratul_cpu_pct
+          - sensor.god_pve_h340_cpu_pct
+      - type: history-graph
+        title: PVE nodes RAM %
+        hours_to_show: 12
+        entities:
+          - sensor.god_pve_zeratul_mem_pct
+          - sensor.god_pve_h340_mem_pct
   - title: Config
     path: config
     icon: mdi:tune
-    badges: []
     cards:
       - type: markdown
-        content: |
-          ## GOD Mode · configuración
-          Helpers para ajustar comportamiento del dashboard y alertas.
-
+        content: "## GOD Mode helpers"
       - type: entities
-        title: Pilas / batterías
+        title: Pilas
         entities:
           - input_number.god_battery_threshold_pct
           - input_select.god_battery_reminder_freq
           - input_datetime.god_battery_reminder_time
-
       - type: entities
         title: Telegram
         entities:
           - input_text.god_telegram_chat_id
-
       - type: entities
         title: Smoke test
         entities:
