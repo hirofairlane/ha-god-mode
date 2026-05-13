@@ -1,0 +1,75 @@
+---
+# =====================================================================
+#  detect_os.yml - Identify OS family of a target host
+#
+#  Sets ansible_facts.god_os to one of: linux | busybox | macos | windows
+#  Sets ansible_facts.god_agent_path to the expected agent path on target
+#
+#  Used by the onboarding wizard before install_agent to pick the right
+#  agent variant.
+# =====================================================================
+- name: GOD Mode OS detect
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  tasks:
+    - name: Raw uname (Linux/macOS/OpenWrt) - tolerate Windows failure
+      ansible.builtin.raw: uname -a 2>/dev/null
+      register: uname_out
+      changed_when: false
+      failed_when: false
+      timeout: 8
+
+    - name: Check for Windows (PowerShell test)
+      ansible.builtin.raw: powershell -NoProfile -Command "$PSVersionTable.PSVersion.Major"
+      register: ps_out
+      changed_when: false
+      failed_when: false
+      timeout: 8
+      when: uname_out.rc != 0
+
+    - name: Read /etc/openwrt_release
+      ansible.builtin.raw: test -f /etc/openwrt_release && cat /etc/openwrt_release || true
+      register: openwrt_check
+      changed_when: false
+      failed_when: false
+      when: uname_out.rc == 0
+
+    - name: Classify OS
+      ansible.builtin.set_fact:
+        god_os: >-
+          {%- if uname_out.rc != 0 and ps_out.stdout is defined and ps_out.stdout | int > 0 -%}
+            windows
+          {%- elif openwrt_check is defined and openwrt_check.stdout is defined and 'OpenWrt' in openwrt_check.stdout -%}
+            busybox
+          {%- elif uname_out.stdout is defined and 'Darwin' in uname_out.stdout -%}
+            macos
+          {%- elif uname_out.stdout is defined and 'Linux' in uname_out.stdout -%}
+            linux
+          {%- else -%}
+            unknown
+          {%- endif -%}
+
+    - name: Pick agent path per OS
+      ansible.builtin.set_fact:
+        god_agent_path: >-
+          {%- if god_os == 'windows' -%}
+            C:\ProgramData\god-mode\god-agent.ps1
+          {%- elif god_os == 'busybox' -%}
+            /usr/bin/god-agent
+          {%- elif ansible_user == 'root' -%}
+            /usr/local/bin/god-agent
+          {%- else -%}
+            ~/.local/bin/god-agent
+          {%- endif -%}
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} os={{ god_os }} agent_path={{ god_agent_path | trim }}"
+
+    - name: Write detected metadata to /data/metadata/<host>.json (controller)
+      ansible.builtin.copy:
+        content: "{{ {'god_os': god_os, 'god_agent_path': god_agent_path | trim, 'detected_at': ansible_date_time.iso8601 | default(lookup('pipe', 'date -Iseconds')) } | to_nice_json }}"
+        dest: "/data/metadata/{{ inventory_hostname }}.json"
+        mode: "0644"
+      delegate_to: localhost

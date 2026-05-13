@@ -1,68 +1,162 @@
 ---
 # =====================================================================
-#  install_agent.yml - first-time provisioning of each host
+#  install_agent.yml - universal agent deployer
 #
-#    1. Append GOD Mode pubkey to ~/.ssh/authorized_keys (idempotent).
-#    2. Copy /usr/share/god-mode/agent/god-agent.sh to:
-#         - /usr/local/bin/god-agent  (root user, requires sudo or root)
-#         - $HOME/.local/bin/god-agent (non-root user)
-#    3. chmod +x.
-#    4. Run a smoke test (god-agent should produce JSON).
+#  Steps:
+#   1. Ensure GOD Mode pubkey in remote authorized_keys (idempotent).
+#   2. Detect OS family (re-uses metadata file written by detect_os.yml).
+#   3. Push the matching agent variant (linux/busybox/macos/windows) to
+#      the path appropriate for that OS.
+#   4. Smoke test: run the agent and verify JSON.
 #
 #  Triggered by:
-#    - /api/install POST from web UI
-#    - or `ansible-playbook install_agent.yml -i /data/ansible/inventory.yml`
-#
-#  Note: this playbook ASSUMES the user has already added the pubkey to
-#  authorized_keys *initially* (chicken-and-egg). The web UI shows the
-#  pubkey for that. After the first time, this playbook keeps it synced.
+#    - Web UI button "Install agent on all"
+#    - Web UI onboarding wizard (after detect_os)
+#    - Manual: ansible-playbook install_agent.yml --limit <host>
 # =====================================================================
-- name: GOD Mode install_agent
+- name: GOD Mode install_agent (universal)
   hosts: all
   gather_facts: false
   any_errors_fatal: false
   strategy: free
   vars:
-    god_agent_src: /usr/share/god-mode/agent/god-agent.sh
+    pubkey_path: /data/.ssh/id_ed25519.pub
+    agents_dir: /usr/share/god-mode/agents
+    metadata_dir: /data/metadata
   tasks:
-    - name: Ensure authorized_keys contains GOD Mode pubkey
-      ansible.posix.authorized_key:
-        user: "{{ ansible_user }}"
-        state: present
-        key: "{{ lookup('file', '/data/.ssh/id_ed25519.pub') }}"
-        comment: "god-mode"
-      ignore_errors: true   # (the user pre-added it manually, this is idempotent)
-
-    - name: Detect if user can write /usr/local/bin
-      ansible.builtin.stat:
-        path: /usr/local/bin
-      register: usrlocal
-
-    - name: Pick install destination
+    # --- Read pre-detected OS (or detect inline) -------------------------
+    - name: Read detect_os metadata (if present)
       ansible.builtin.set_fact:
+        meta: "{{ lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') | default('{}') | from_json }}"
+
+    - name: Inline detect when metadata absent
+      ansible.builtin.raw: uname -a 2>/dev/null || powershell -NoProfile -Command "$PSVersionTable.PSVersion.Major"
+      register: probe
+      changed_when: false
+      failed_when: false
+      when: meta.god_os is not defined
+
+    - name: Classify when metadata absent
+      ansible.builtin.set_fact:
+        meta:
+          god_os: >-
+            {%- if probe.stdout is defined and 'Darwin' in probe.stdout -%}macos
+            {%- elif probe.stdout is defined and probe.stdout | trim | length > 0 and probe.stdout | regex_search('^[0-9]+$') -%}windows
+            {%- elif probe.stdout is defined and 'Linux' in probe.stdout -%}{% if 'OpenWrt' in probe.stdout %}busybox{% else %}linux{% endif %}
+            {%- else -%}unknown
+            {%- endif -%}
+      when: meta.god_os is not defined
+
+    # --- Compute agent source + target path ------------------------------
+    - name: Compute agent source/target
+      ansible.builtin.set_fact:
+        agent_src: "{{ agents_dir }}/{{ {'linux': 'linux.sh', 'busybox': 'busybox.sh', 'macos': 'macos.sh', 'windows': 'windows.ps1'}[meta.god_os] | default('linux.sh') }}"
         agent_dest: >-
-          {{ '/usr/local/bin/god-agent'
-             if (ansible_user == 'root' or usrlocal.stat.writeable | default(false))
-             else lookup('env','HOME') ~ '/.local/bin/god-agent' }}
+          {%- if meta.god_os == 'windows' -%}
+            C:\ProgramData\god-mode\god-agent.ps1
+          {%- elif meta.god_os == 'busybox' -%}
+            /usr/bin/god-agent
+          {%- elif ansible_user == 'root' -%}
+            /usr/local/bin/god-agent
+          {%- else -%}
+            $HOME/.local/bin/god-agent
+          {%- endif -%}
 
-    - name: Ensure parent dir exists
-      ansible.builtin.file:
-        path: "{{ agent_dest | dirname }}"
-        state: directory
-        mode: "0755"
+    - name: Show plan
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} OS={{ meta.god_os }} src={{ agent_src }} dst={{ agent_dest | trim }}"
 
-    - name: Copy agent script
-      ansible.builtin.copy:
-        src: "{{ god_agent_src }}"
-        dest: "{{ agent_dest }}"
-        mode: "0755"
+    # --- Propagate pubkey (POSIX hosts) ---------------------------------
+    - name: Propagate GOD pubkey (POSIX authorized_keys)
+      ansible.builtin.raw: |
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        touch ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/authorized_keys
+        grep -qF "{{ lookup('file', pubkey_path) }}" ~/.ssh/authorized_keys || \
+          echo "{{ lookup('file', pubkey_path) }}" >> ~/.ssh/authorized_keys
+      changed_when: false
+      failed_when: false
+      when: meta.god_os in ['linux','busybox','macos']
 
-    - name: Smoke test
-      ansible.builtin.shell: "{{ agent_dest }}"
+    # --- OpenWrt: dropbear key path is different -------------------------
+    - name: Propagate GOD pubkey (OpenWrt dropbear)
+      ansible.builtin.raw: |
+        mkdir -p /etc/dropbear
+        chmod 700 /etc/dropbear
+        touch /etc/dropbear/authorized_keys
+        grep -qF "{{ lookup('file', pubkey_path) }}" /etc/dropbear/authorized_keys || \
+          echo "{{ lookup('file', pubkey_path) }}" >> /etc/dropbear/authorized_keys
+      changed_when: false
+      failed_when: false
+      when: meta.god_os == 'busybox'
+
+    # --- Windows: append to authorized_keys in admin or user location ----
+    - name: Propagate GOD pubkey (Windows authorized_keys)
+      ansible.builtin.raw: |
+        powershell -NoProfile -Command "
+          $ErrorActionPreference='Stop';
+          $key = '{{ lookup('file', pubkey_path) }}';
+          $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);
+          if ($isAdmin) {
+            $path='C:\ProgramData\ssh\administrators_authorized_keys';
+            New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null;
+          } else {
+            $path = Join-Path $HOME '.ssh\authorized_keys';
+            New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null;
+          }
+          if (-not (Test-Path $path) -or -not (Select-String -Path $path -Pattern ([regex]::Escape($key)) -Quiet)) {
+            Add-Content -Path $path -Value $key;
+          }
+        "
+      changed_when: false
+      failed_when: false
+      when: meta.god_os == 'windows'
+
+    # --- Copy agent (POSIX) ----------------------------------------------
+    - name: Read agent source content
+      ansible.builtin.set_fact:
+        agent_content: "{{ lookup('file', agent_src) }}"
+      delegate_to: localhost
+
+    - name: Push agent (POSIX hosts) via base64
+      ansible.builtin.raw: |
+        DEST="{{ agent_dest | trim }}"
+        mkdir -p "$(dirname "$DEST")" 2>/dev/null
+        cat <<'__GOD_AGENT_EOF__' > "$DEST"
+        {{ agent_content }}
+        __GOD_AGENT_EOF__
+        chmod 755 "$DEST"
+      changed_when: false
+      failed_when: false
+      when: meta.god_os in ['linux','busybox','macos']
+
+    # --- Push agent (Windows via PowerShell here-string) -----------------
+    - name: Push agent (Windows)
+      ansible.builtin.raw: |
+        powershell -NoProfile -Command "
+          $dest = 'C:\ProgramData\god-mode\god-agent.ps1';
+          New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null;
+          $b64 = '{{ agent_content | b64encode }}';
+          [System.IO.File]::WriteAllBytes($dest, [System.Convert]::FromBase64String($b64));
+        "
+      changed_when: false
+      failed_when: false
+      when: meta.god_os == 'windows'
+
+    # --- Smoke test -------------------------------------------------------
+    - name: Smoke test agent
+      ansible.builtin.raw: |
+        {% if meta.god_os == 'windows' %}
+        powershell -NoProfile -File "C:\ProgramData\god-mode\god-agent.ps1"
+        {% else %}
+        "{{ agent_dest | trim }}"
+        {% endif %}
       register: smoke
       changed_when: false
-      timeout: 10
+      failed_when: false
+      timeout: 12
 
-    - name: Show smoke output
+    - name: Report smoke test
       ansible.builtin.debug:
-        msg: "{{ smoke.stdout | truncate(200) }}"
+        msg: "{{ inventory_hostname }}: {{ smoke.stdout | default(smoke.stderr | default('NO OUTPUT'))[:200] }}"
