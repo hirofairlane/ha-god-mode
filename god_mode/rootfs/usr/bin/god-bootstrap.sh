@@ -12,8 +12,10 @@ SSH_DIR="${DATA}/.ssh"
 INV_DIR="${DATA}/ansible"
 INV_FILE="${INV_DIR}/inventory.yml"
 CFG_FILE="${INV_DIR}/ansible.cfg"
+META_DIR="${DATA}/metadata"
+METRICS_DIR="${DATA}/metrics"
 
-mkdir -p "${SSH_DIR}" "${INV_DIR}"
+mkdir -p "${SSH_DIR}" "${INV_DIR}" "${META_DIR}" "${METRICS_DIR}"
 chmod 700 "${SSH_DIR}"
 
 # 1) Keypair (only on first run)

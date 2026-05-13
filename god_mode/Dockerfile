@@ -18,10 +18,12 @@ ENV LANG=C.UTF-8 \
 #   bash: bashio requiere bash
 RUN apk add --no-cache \
         openssh-client \
+        openssh-keygen \
         curl \
         jq \
         bash \
         sshpass \
+        coreutils \
     && pip install --no-cache-dir --break-system-packages \
         ansible-core==2.17.* \
         requests \

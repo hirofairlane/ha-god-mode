@@ -32,6 +32,7 @@ PLAYBOOKS = {
     "install_agent": "/usr/share/god-mode/ansible/playbooks/install_agent.yml",
     "gather":        "/usr/share/god-mode/ansible/playbooks/gather.yml",
     "power":         "/usr/share/god-mode/ansible/playbooks/power.yml",
+    "detect_os":     "/usr/share/god-mode/ansible/playbooks/detect_os.yml",
 }
 BOOTSTRAP_SCRIPT = "/usr/bin/god-bootstrap.sh"
 CATEGORIES = ["pve_node", "server", "sbc", "desktop_linux", "desktop_win", "desktop_mac", "network"]
@@ -140,6 +141,14 @@ INDEX_HTML = r"""<!DOCTYPE html>
           <option value="network">network</option>
         </select>
       </div>
+      <div>
+        <label>Password (optional - for first-time bootstrap)</label>
+        <input id="o-pass" type="password" placeholder="blank if pubkey already installed">
+      </div>
+    </div>
+    <div class="small" style="margin-top:0.4rem;color:#8b949e;">
+      With password: SSH bootstraps with password, installs pubkey, then runs detect_os + install_agent.
+      Without password: assumes you already added the pubkey to <code>~/.ssh/authorized_keys</code> manually.
     </div>
     <div style="margin-top:0.8rem;">
       <button type="submit">➕ Add host</button>
@@ -235,7 +244,10 @@ async function onboard(ev) {
     user: document.getElementById('o-user').value || 'root',
     port: parseInt(document.getElementById('o-port').value || '22'),
     category: document.getElementById('o-cat').value,
+    password: document.getElementById('o-pass').value || '',
   };
+  // Wipe password field immediately so it doesn't sit in DOM
+  document.getElementById('o-pass').value = '';
   status.textContent = ' submitting...';
   try {
     const r = await fetch('api/onboard', {
@@ -345,9 +357,48 @@ def rerun_bootstrap() -> str:
         return f"bootstrap exception: {e}"
 
 
+def ssh_copy_id_with_password(addr: str, user: str, port: int, password: str) -> tuple[bool, str]:
+    """Uses sshpass to push the GOD pubkey into ~/.ssh/authorized_keys
+    of the target host. Password is only held in this process, never
+    written to disk."""
+    pubkey = (DATA_DIR / ".ssh" / "id_ed25519.pub").read_text().strip()
+    # ssh-copy-id is the right tool but it's interactive; we do the
+    # equivalent via shell on the remote.
+    cmd_remote = (
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
+        "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && "
+        f"grep -qF '{pubkey}' ~/.ssh/authorized_keys || echo '{pubkey}' >> ~/.ssh/authorized_keys && "
+        "echo OK_PUBKEY_INSTALLED"
+    )
+    try:
+        p = subprocess.run(
+            ["sshpass", "-e", "ssh",
+                "-o", "BatchMode=no",
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "PreferredAuthentications=password",
+                "-o", "PubkeyAuthentication=no",
+                "-o", "ConnectTimeout=8",
+                "-p", str(port),
+                f"{user}@{addr}",
+                cmd_remote,
+            ],
+            env={**os.environ, "SSHPASS": password},
+            capture_output=True, text=True, timeout=20,
+        )
+        if "OK_PUBKEY_INSTALLED" in p.stdout:
+            return True, "pubkey installed via password bootstrap"
+        return False, f"rc={p.returncode} stderr={p.stderr.strip()[:200]}"
+    except FileNotFoundError:
+        return False, "sshpass not installed in the addon container"
+    except subprocess.TimeoutExpired:
+        return False, "SSH connect timeout"
+    except Exception as e:
+        return False, f"exception: {e}"
+
+
 def onboard_host(payload: dict) -> tuple[int, str]:
-    """Adds a new host to /data/options.json, regenerates inventory."""
-    # Validate
+    """Adds a new host to /data/options.json, optionally bootstraps SSH
+    with password, runs detect_os + install_agent + gather."""
     required = ("name", "addr")
     for k in required:
         if not payload.get(k):
@@ -359,39 +410,56 @@ def onboard_host(payload: dict) -> tuple[int, str]:
     user = payload.get("user", "root")
     port = int(payload.get("port", 22))
     category = payload.get("category", "server")
+    password = payload.get("password", "")  # optional, transient
     if category not in CATEGORIES:
         return 400, f"unknown category {category}; valid: {','.join(CATEGORIES)}"
 
-    # Read options.json
     try:
         opts = json.loads(OPTS_FILE.read_text())
     except Exception as e:
         return 500, f"can't read options.json: {e}"
 
-    # Dedupe
     if any(h["name"] == name for h in opts.get("hosts", [])):
         return 409, f"host '{name}' already exists"
 
     new_host = {"name": name, "addr": addr, "user": user, "port": port, "category": category}
     opts.setdefault("hosts", []).append(new_host)
-
-    # Write back
     try:
         OPTS_FILE.write_text(json.dumps(opts, indent=2))
     except Exception as e:
         return 500, f"can't write options.json: {e}"
 
-    # Regenerate inventory
-    boot_log = rerun_bootstrap()
+    log_lines = [f"✓ Host '{name}' ({addr}) added under category '{category}'."]
 
-    return 200, (
-        f"✓ Host '{name}' ({addr}) added to options.json under category '{category}'.\n"
-        f"\n--- bootstrap re-run ---\n{boot_log}\n"
-        f"\nNEXT STEPS:\n"
-        f"  1) Copy the SSH pubkey above into {user}@{addr}:~/.ssh/authorized_keys\n"
-        f"     ssh-copy-id -i /data/.ssh/id_ed25519.pub {user}@{addr}    (if you can SSH manually)\n"
-        f"  2) Click 'Install agent on all' to deploy the metrics agent.\n"
-    )
+    # Step 1: regen inventory
+    log_lines.append("\n=== bootstrap (regen inventory) ===")
+    log_lines.append(rerun_bootstrap())
+
+    # Step 2: optional password bootstrap
+    if password:
+        log_lines.append(f"\n=== ssh-copy-id (password bootstrap) ===")
+        ok, msg = ssh_copy_id_with_password(addr, user, port, password)
+        log_lines.append(("✓ " if ok else "✗ ") + msg)
+        # We deliberately discard the password here — it never reaches disk.
+        password = None
+        if not ok:
+            log_lines.append("Password bootstrap failed. Skipping detect_os / install_agent.")
+            log_lines.append("Fix and retry, or install the pubkey manually then re-run.")
+            return 200, "\n".join(log_lines)
+
+    # Step 3: detect_os
+    log_lines.append(f"\n=== detect_os --limit {name} ===")
+    log_lines.append(run_playbook("detect_os", limit=name))
+
+    # Step 4: install_agent
+    log_lines.append(f"\n=== install_agent --limit {name} ===")
+    log_lines.append(run_playbook("install_agent", limit=name))
+
+    # Step 5: gather (one-shot, results visible immediately on next poll)
+    log_lines.append(f"\n=== gather --limit {name} ===")
+    log_lines.append(run_playbook("gather", limit=name))
+
+    return 200, "\n".join(log_lines)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):

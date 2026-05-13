@@ -1,11 +1,11 @@
 ---
 # =====================================================================
-#  gather.yml - polling playbook
+#  gather.yml - polling playbook (multi-OS aware)
 #
-#  For each host: open SSH, run god-agent, capture stdout JSON.
-#  Save the parsed metric as /data/metrics/<host>.json on the controller
-#  (the add-on container) so the collector can read it without depending
-#  on ansible callback plugins.
+#  For each host: pull the agent path from /data/metadata/<host>.json
+#  (written by detect_os.yml or install_agent.yml). Falls back to a
+#  tried-and-true sequence of well-known paths for hosts without
+#  metadata yet.
 # =====================================================================
 - name: GOD Mode metrics gather
   hosts: all
@@ -14,6 +14,7 @@
   strategy: free
   vars:
     metrics_dir: /data/metrics
+    metadata_dir: /data/metadata
   tasks:
     - name: Ensure metrics dir exists (controller)
       ansible.builtin.file:
@@ -23,32 +24,53 @@
       delegate_to: localhost
       run_once: true
 
-    - name: Run agent (one-shot)
-      ansible.builtin.shell: |
-        if [ -x /usr/local/bin/god-agent ]; then
-          /usr/local/bin/god-agent
-        elif [ -x "$HOME/.local/bin/god-agent" ]; then
-          "$HOME/.local/bin/god-agent"
-        else
-          echo '{"_ok":false,"_error":"agent_not_installed"}'
-        fi
-      register: out
+    - name: Read per-host metadata if present
+      ansible.builtin.set_fact:
+        meta: "{{ lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') | default('{}') | from_json }}"
+
+    - name: Run agent (windows path)
+      ansible.builtin.raw: |
+        powershell -NoProfile -File "C:\ProgramData\god-mode\god-agent.ps1"
+      register: out_win
       changed_when: false
       failed_when: false
-      timeout: 8
+      timeout: 10
+      when: meta.god_os | default('') == 'windows'
+
+    - name: Run agent (POSIX, known path from metadata)
+      ansible.builtin.raw: |
+        AGENT="{{ meta.god_agent_path | default('') | trim }}"
+        if [ -n "$AGENT" ] && [ -x "$AGENT" ]; then
+          "$AGENT"
+        else
+          # Fallback sequence
+          for p in /usr/local/bin/god-agent /usr/bin/god-agent "$HOME/.local/bin/god-agent"; do
+            if [ -x "$p" ]; then "$p"; exit; fi
+          done
+          echo '{"_ok":false,"_error":"agent_not_installed"}'
+        fi
+      register: out_posix
+      changed_when: false
+      failed_when: false
+      timeout: 10
+      when: meta.god_os | default('') != 'windows'
+
+    - name: Pick the relevant stdout
+      ansible.builtin.set_fact:
+        agent_stdout: "{{ (out_win.stdout if (meta.god_os | default('') == 'windows') else out_posix.stdout) | default('') }}"
 
     - name: Parse JSON output
       ansible.builtin.set_fact:
         god_metric: >-
-          {%- if out.stdout is defined and out.stdout.strip().startswith('{') -%}
-            {{ out.stdout | from_json }}
+          {%- if agent_stdout is defined and agent_stdout.strip().startswith('{') -%}
+            {{ agent_stdout | from_json }}
           {%- else -%}
-            {"_ok": false, "_error": "{{ (out.stderr | default(out.stdout, true) | default('no output', true) | truncate(200))|replace('\"','') }}"}
+            {"_ok": false, "_error": "no_output"}
           {%- endif -%}
 
-    - name: Add freshness timestamp
+    - name: Inject category/agent metadata into metric
       ansible.builtin.set_fact:
-        god_metric: "{{ god_metric | combine({'_polled_at': ansible_date_time.epoch | default(lookup('pipe', 'date +%s'))|int}) }}"
+        god_metric: "{{ god_metric | combine({'_polled_at': lookup('pipe','date +%s')|int, '_god_os': meta.god_os | default('unknown')}) }}"
 
     - name: Save metric file (controller side)
       ansible.builtin.copy:
