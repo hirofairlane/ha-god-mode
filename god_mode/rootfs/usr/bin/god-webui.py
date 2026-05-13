@@ -31,6 +31,7 @@ PLAYBOOKS = {
     "ping":          "/usr/share/god-mode/ansible/playbooks/ping.yml",
     "install_agent": "/usr/share/god-mode/ansible/playbooks/install_agent.yml",
     "gather":        "/usr/share/god-mode/ansible/playbooks/gather.yml",
+    "power":         "/usr/share/god-mode/ansible/playbooks/power.yml",
 }
 BOOTSTRAP_SCRIPT = "/usr/bin/god-bootstrap.sh"
 CATEGORIES = ["pve_node", "server", "sbc", "desktop_linux", "desktop_win", "desktop_mac", "network"]
@@ -101,7 +102,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
   <button class="secondary" onclick="run('install_agent')">📦 Install agent on all</button>
   <button class="secondary" onclick="run('gather')">🔬 Gather now</button>
   <table id="hosts">
-    <thead><tr><th>host</th><th>category</th><th>status</th><th>cpu%</th><th>mem%</th><th>disk%</th><th>temp</th><th>updates</th><th>last poll</th></tr></thead>
+    <thead><tr><th>host</th><th>category</th><th>status</th><th>cpu%</th><th>mem%</th><th>disk%</th><th>temp</th><th>updates</th><th>last poll</th><th>actions</th></tr></thead>
     <tbody></tbody>
   </table>
 </div>
@@ -180,10 +181,15 @@ async function refresh() {
       const status = ok ? '<span class="ok">OK</span>'
                         : (m._error === 'not_polled_yet' ? '<span class="warn">pending</span>'
                                                           : '<span class="ko">'+(m._error||'fail')+'</span>');
+      const actions = `
+        <button class="secondary" onclick="power('wake','${name}')" title="Wake on LAN">⏻</button>
+        <button class="secondary" onclick="power('reboot','${name}')" title="Reboot via SSH">↻</button>
+        <button class="danger" onclick="power('shutdown','${name}')" title="Shutdown via SSH">⏼</button>`;
       tr.innerHTML = `<td><b>${name}</b></td><td class="cat-${cat}">${cat}</td><td>${status}</td>` +
                      `<td>${m.cpu_pct ?? '-'}</td><td>${m.mem_pct ?? '-'}</td>` +
                      `<td>${m.disk_max_pct ?? '-'}</td><td>${m.temp_max_c ?? '-'}</td>` +
-                     `<td>${m.updates_pending ?? '-'}</td><td class="small">${age}</td>`;
+                     `<td>${m.updates_pending ?? '-'}</td><td class="small">${age}</td>` +
+                     `<td>${actions}</td>`;
       tbody.appendChild(tr);
     });
   } catch(e) {
@@ -207,6 +213,18 @@ async function run(action) {
     refresh();
   } catch(e) { log.textContent = 'ERROR: '+e; }
 }
+async function power(action, host) {
+  const log = document.getElementById('log');
+  const verb = {wake:'Waking', reboot:'Rebooting', shutdown:'Shutting down'}[action] || action;
+  if (action !== 'wake' && !confirm(`${verb} ${host}?`)) return;
+  log.textContent = `${verb} ${host}...\n`;
+  try {
+    const r = await fetch(`api/power/${action}/${host}`, { method: 'POST' });
+    log.textContent = await r.text();
+    setTimeout(refresh, 3000);
+  } catch(e) { log.textContent = `ERROR: ${e}`; }
+}
+
 async function onboard(ev) {
   ev.preventDefault();
   const status = document.getElementById('onboard-status');
@@ -253,7 +271,7 @@ def proxy_collector(path: str) -> tuple[int, bytes, str]:
         return 502, json.dumps({"error": str(e)}).encode(), "application/json"
 
 
-def run_playbook(name: str, limit: str | None = None) -> str:
+def run_playbook(name: str, limit: str | None = None, extra_vars: dict | None = None) -> str:
     pb = PLAYBOOKS.get(name)
     if not pb:
         return f"unknown action: {name}"
@@ -262,11 +280,56 @@ def run_playbook(name: str, limit: str | None = None) -> str:
     cmd = ["ansible-playbook", pb, "-i", str(INV_FILE)]
     if limit:
         cmd.extend(["--limit", limit])
+    if extra_vars:
+        cmd.extend(["-e", json.dumps(extra_vars)])
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
         return f"=== {name}{(' --limit '+limit) if limit else ''} (rc={p.returncode}) ===\n{p.stdout[-4000:]}\n--- stderr ---\n{p.stderr[-1000:]}"
     except subprocess.TimeoutExpired:
         return f"=== {name} TIMEOUT after 300s ==="
+
+
+def send_wol(mac: str) -> tuple[bool, str]:
+    """Send a Wake-on-LAN magic packet for the given MAC address."""
+    import socket
+    try:
+        mac_clean = mac.replace(":", "").replace("-", "").strip()
+        if len(mac_clean) != 12:
+            return False, f"invalid MAC: {mac}"
+        mac_bytes = bytes.fromhex(mac_clean)
+        magic = b"\xff" * 6 + mac_bytes * 16
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(magic, ("255.255.255.255", 9))
+        sock.close()
+        return True, f"WoL magic packet sent to {mac}"
+    except Exception as e:
+        return False, f"WoL failed: {e}"
+
+
+def power_action(host: str, action: str) -> tuple[int, str]:
+    """Wake / shutdown / reboot a configured host."""
+    try:
+        opts = json.loads(OPTS_FILE.read_text())
+    except Exception as e:
+        return 500, f"options.json: {e}"
+
+    host_entry = next((h for h in opts.get("hosts", []) if h["name"] == host), None)
+    if not host_entry:
+        return 404, f"host '{host}' not in inventory"
+
+    if action == "wake":
+        mac = host_entry.get("mac")
+        if not mac:
+            return 400, f"host '{host}' has no 'mac' field in options.json"
+        ok, msg = send_wol(mac)
+        return (200 if ok else 500), msg
+
+    if action in ("shutdown", "reboot"):
+        result = run_playbook("power", limit=host, extra_vars={"action": action})
+        return 200, result
+
+    return 400, f"unknown action '{action}' (use wake|shutdown|reboot)"
 
 
 def rerun_bootstrap() -> str:
@@ -375,6 +438,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(400, f"bad json: {e}", "text/plain")
                 return
             code, msg = onboard_host(body)
+            self._send(code, msg, "text/plain; charset=utf-8")
+            return
+        # /api/power/<action>/<host>
+        idx_power = p.rfind("/api/power/")
+        if idx_power != -1:
+            parts = p[idx_power + len("/api/power/"):].strip("/").split("/")
+            if len(parts) != 2:
+                self._send(400, "usage: POST /api/power/<wake|shutdown|reboot>/<host>", "text/plain")
+                return
+            code, msg = power_action(parts[1], parts[0])
             self._send(code, msg, "text/plain; charset=utf-8")
             return
         self._send(404, "not found", "text/plain")

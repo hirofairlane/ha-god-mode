@@ -1,0 +1,45 @@
+---
+# =====================================================================
+#  power.yml - shutdown / reboot a single host
+#
+#  Usage:
+#    ansible-playbook power.yml --limit <host> -e action=shutdown
+#    ansible-playbook power.yml --limit <host> -e action=reboot
+#
+#  Wake-on-LAN does NOT live here (the addon sends magic packets from
+#  Python; no SSH possible if the host is off).
+# =====================================================================
+- name: GOD Mode power control
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  vars:
+    action: shutdown   # override with -e action=reboot
+    delay: now
+  tasks:
+    - name: Validate action
+      ansible.builtin.fail:
+        msg: "action must be 'shutdown' or 'reboot'"
+      when: action not in ['shutdown','reboot']
+
+    - name: Shutdown host
+      ansible.builtin.shell: |
+        sudo -n shutdown -h {{ delay }} 2>/dev/null \
+          || shutdown -h {{ delay }} 2>/dev/null \
+          || /sbin/poweroff
+      when: action == 'shutdown'
+      async: 5
+      poll: 0
+      changed_when: true
+      failed_when: false
+
+    - name: Reboot host
+      ansible.builtin.shell: |
+        sudo -n shutdown -r {{ delay }} 2>/dev/null \
+          || shutdown -r {{ delay }} 2>/dev/null \
+          || /sbin/reboot
+      when: action == 'reboot'
+      async: 5
+      poll: 0
+      changed_when: true
+      failed_when: false

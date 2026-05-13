@@ -1,7 +1,7 @@
 ---
 name: GOD Mode
 slug: god_mode
-version: "0.3.1"
+version: "0.3.2"
 description: >-
   Centralized homelab control plane for Home Assistant. Aggregated
   monitoring of Linux hosts, Proxmox cluster, OpenWrt routers and
@@ -42,7 +42,7 @@ options:
   hosts:
     # ---- Proxmox cluster nodes ----
     - { name: zeratul,           addr: 192.168.1.122, user: root,   category: pve_node }
-    - { name: h340,              addr: 192.168.1.129, user: root,   category: pve_node }
+    - { name: h340,              addr: 192.168.1.129, user: root,   category: pve_node, mac: "d0:bf:9c:46:64:a5" }
     # ---- Linux servers (VMs/CTs) ----
     - { name: plex,              addr: 192.168.1.123, user: root,   category: server }
     - { name: frigate,           addr: 192.168.1.170, user: sergio, category: server }
@@ -79,3 +79,4 @@ schema:
       user: str?
       port: port?
       category: list(pve_node|server|sbc|desktop_linux|desktop_win|desktop_mac|network)?
+      mac: match(^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$)?
