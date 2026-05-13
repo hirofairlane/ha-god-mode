@@ -69,21 +69,65 @@ $htype = "bare"
 $pm = Get-CimInstance Win32_ComputerSystem
 if ($pm.Model -match 'Virtual') { $htype = "vm" }
 
+# Swap (pagefile)
+$pagefile = Get-CimInstance Win32_PageFileUsage
+$swap_total_mb = 0
+$swap_used_mb  = 0
+foreach ($p in $pagefile) {
+    $swap_total_mb += [int]$p.AllocatedBaseSize
+    $swap_used_mb  += [int]$p.CurrentUsage
+}
+$swap_pct = if ($swap_total_mb -gt 0) { [math]::Round($swap_used_mb * 100.0 / $swap_total_mb, 1) } else { 0 }
+
+# SMART via PhysicalDisk + StorageReliabilityCounter
+$smart_health        = "unknown"
+$smart_disks_count   = 0
+$smart_failed_disks  = 0
+$smart_temp_max      = 0
+$smart_reallocated_max = 0
+try {
+    $disks = Get-PhysicalDisk
+    if ($disks) {
+        $smart_health = "PASSED"
+        foreach ($d in $disks) {
+            $smart_disks_count++
+            if ($d.HealthStatus -ne 'Healthy') {
+                $smart_failed_disks++
+                $smart_health = "FAILED"
+            }
+            try {
+                $rel = Get-StorageReliabilityCounter -PhysicalDisk $d -ErrorAction Stop
+                if ($rel.Temperature -gt $smart_temp_max) { $smart_temp_max = [int]$rel.Temperature }
+                if ($rel.ReadErrorsCorrected -gt $smart_reallocated_max) {
+                    $smart_reallocated_max = [int]$rel.ReadErrorsCorrected
+                }
+            } catch { }
+        }
+    }
+} catch { }
+
 # Output single-line JSON
 $json = @{
-    host             = $host_name
-    htype            = $htype
-    kernel           = $kernel
-    ts               = $ts
-    uptime_s         = $uptime_s
-    load_1m          = $load1
-    cpu_pct          = $cpu_pct
-    mem_pct          = $mem_pct
-    mem_total_mb     = $mem_total_mb
-    mem_used_mb      = $mem_used_mb
-    disk_root_pct    = $disk_root
-    disk_max_pct     = $disk_max
-    temp_max_c       = $temp_max
-    updates_pending  = $updates
+    host                  = $host_name
+    htype                 = $htype
+    kernel                = $kernel
+    ts                    = $ts
+    uptime_s              = $uptime_s
+    load_1m               = $load1
+    cpu_pct               = $cpu_pct
+    mem_pct               = $mem_pct
+    mem_total_mb          = $mem_total_mb
+    mem_used_mb           = $mem_used_mb
+    swap_pct              = $swap_pct
+    swap_total_mb         = $swap_total_mb
+    disk_root_pct         = $disk_root
+    disk_max_pct          = $disk_max
+    temp_max_c            = $temp_max
+    smart_health          = $smart_health
+    smart_disks_count     = $smart_disks_count
+    smart_failed_disks    = $smart_failed_disks
+    smart_temp_max        = $smart_temp_max
+    smart_reallocated_max = $smart_reallocated_max
+    updates_pending       = $updates
 } | ConvertTo-Json -Compress
 Write-Output $json

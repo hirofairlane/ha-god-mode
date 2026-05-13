@@ -93,6 +93,26 @@ if [ -f /etc/openwrt_release ]; then
     htype="openwrt"
 fi
 
+# Swap (OpenWrt typically has no swap, default 0)
+swap_total_kb=$(awk '/^SwapTotal:/{print $2}' /proc/meminfo 2>/dev/null)
+swap_free_kb=$(awk '/^SwapFree:/{print $2}' /proc/meminfo 2>/dev/null)
+swap_total_kb=${swap_total_kb:-0}
+swap_free_kb=${swap_free_kb:-0}
+swap_total_mb=$((swap_total_kb / 1024))
+if [ "$swap_total_kb" -gt 0 ] 2>/dev/null; then
+    swap_used_kb=$((swap_total_kb - swap_free_kb))
+    swap_pct=$(awk -v u=$swap_used_kb -v t=$swap_total_kb 'BEGIN{printf "%.1f", u*100.0/t}')
+else
+    swap_pct="0.0"
+fi
+
+# SMART unlikely on OpenWrt routers — schema parity only
+smart_health="unknown"
+smart_disks_count=0
+smart_failed_disks=0
+smart_temp_max=0
+smart_reallocated_max=0
+
 printf '{'
 printf '"host":"%s",' "$host"
 printf '"htype":"%s",' "$htype"
@@ -104,8 +124,15 @@ printf '"cpu_pct":%s,' "$cpu_pct"
 printf '"mem_pct":%s,' "$mem_pct"
 printf '"mem_total_mb":%s,' "$mem_total_mb"
 printf '"mem_used_mb":%s,' "$mem_used_mb"
+printf '"swap_pct":%s,' "$swap_pct"
+printf '"swap_total_mb":%s,' "$swap_total_mb"
 printf '"disk_root_pct":%s,' "$disk_root"
 printf '"disk_max_pct":%s,' "$disk_max"
 printf '"temp_max_c":%s,' "$temp_max"
+printf '"smart_health":"%s",' "$smart_health"
+printf '"smart_disks_count":%s,' "$smart_disks_count"
+printf '"smart_failed_disks":%s,' "$smart_failed_disks"
+printf '"smart_temp_max":%s,' "$smart_temp_max"
+printf '"smart_reallocated_max":%s,' "$smart_reallocated_max"
 printf '"updates_pending":%s' "$updates"
 printf '}\n'

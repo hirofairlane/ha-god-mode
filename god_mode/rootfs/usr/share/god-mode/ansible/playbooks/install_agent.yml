@@ -159,4 +159,4 @@
 
     - name: Report smoke test
       ansible.builtin.debug:
-        msg: "{{ inventory_hostname }}: {{ smoke.stdout | default(smoke.stderr | default('NO OUTPUT'))[:200] }}"
+        msg: "{{ inventory_hostname }}: {{ (smoke.stdout | default(smoke.stderr) | default('NO OUTPUT')) | truncate(200) }}"

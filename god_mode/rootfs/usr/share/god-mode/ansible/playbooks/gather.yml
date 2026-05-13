@@ -57,16 +57,28 @@
 
     - name: Pick the relevant stdout
       ansible.builtin.set_fact:
-        agent_stdout: "{{ (out_win.stdout if (meta.god_os | default('') == 'windows') else out_posix.stdout) | default('') }}"
+        agent_stdout: "{{ (out_win.stdout | default('')) if (meta.god_os | default('') == 'windows') else (out_posix.stdout | default('')) }}"
 
-    - name: Parse JSON output
+    - name: Set god_metric when agent_stdout is already a dict (Ansible auto-parsed JSON)
       ansible.builtin.set_fact:
-        god_metric: >-
-          {%- if agent_stdout is defined and agent_stdout.strip().startswith('{') -%}
-            {{ agent_stdout | from_json }}
-          {%- else -%}
-            {"_ok": false, "_error": "no_output"}
-          {%- endif -%}
+        god_metric: "{{ agent_stdout }}"
+      when: agent_stdout is mapping
+
+    - name: Try parse JSON output (when agent_stdout is a string)
+      ansible.builtin.set_fact:
+        god_metric: "{{ (agent_stdout | string).strip() | from_json }}"
+      failed_when: false
+      ignore_errors: true
+      when:
+        - agent_stdout is not mapping
+        - (agent_stdout | string).strip().startswith('{')
+
+    - name: Fallback when no valid JSON
+      ansible.builtin.set_fact:
+        god_metric:
+          _ok: false
+          _error: no_output
+      when: god_metric is not defined
 
     - name: Inject category/agent metadata into metric
       ansible.builtin.set_fact:
