@@ -96,6 +96,42 @@ htype="bare"
 sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -qi 'apple' && htype="apple-silicon"
 sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -qi 'intel'  && htype="intel-mac"
 
+# Swap (macOS dynamic, via sysctl vm.swapusage)
+swap_info=$(sysctl -n vm.swapusage 2>/dev/null)
+# Example: "total = 4096.00M  used = 256.00M  free = 3840.00M (encrypted)"
+swap_total_mb=$(echo "$swap_info" | sed -E 's/.*total = ([0-9.]+)M.*/\1/' | cut -d. -f1)
+swap_used_mb=$(echo "$swap_info"  | sed -E 's/.*used = ([0-9.]+)M.*/\1/'  | cut -d. -f1)
+swap_total_mb=${swap_total_mb:-0}
+swap_used_mb=${swap_used_mb:-0}
+if [ "${swap_total_mb:-0}" -gt 0 ] 2>/dev/null; then
+    swap_pct=$(awk -v u="$swap_used_mb" -v t="$swap_total_mb" 'BEGIN{printf "%.1f", u*100.0/t}')
+else
+    swap_pct="0.0"
+fi
+
+# SMART (macOS via brew install smartmontools or /usr/sbin/diskutil)
+smart_health="unknown"
+smart_disks_count=0
+smart_failed_disks=0
+smart_temp_max=0
+smart_reallocated_max=0
+if command -v smartctl >/dev/null 2>&1; then
+    smart_health="PASSED"
+    for d in /dev/disk0 /dev/disk1 /dev/disk2; do
+        [ -e "$d" ] || continue
+        smart_disks_count=$((smart_disks_count + 1))
+        h=$(smartctl -H "$d" 2>/dev/null | awk '/SMART overall-health|SMART Health Status/{print $NF}' | head -1)
+        if [ -n "$h" ] && [ "$h" != "PASSED" ] && [ "$h" != "OK" ]; then
+            smart_failed_disks=$((smart_failed_disks + 1))
+            smart_health="FAILED"
+        fi
+        t=$(smartctl -A "$d" 2>/dev/null | awk '/Temperature_Celsius|Temperature:/{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $i+0 > 10 && $i+0 < 120) {print $i; exit}}' | head -1)
+        if [ -n "$t" ] && [ "$t" -gt "$smart_temp_max" ] 2>/dev/null; then
+            smart_temp_max=$t
+        fi
+    done
+fi
+
 printf '{'
 printf '"host":"%s",' "$host"
 printf '"htype":"%s",' "$htype"
@@ -107,8 +143,15 @@ printf '"cpu_pct":%s,' "$cpu_pct"
 printf '"mem_pct":%s,' "$mem_pct"
 printf '"mem_total_mb":%s,' "$mem_total_mb"
 printf '"mem_used_mb":%s,' "$mem_used_mb"
+printf '"swap_pct":%s,' "$swap_pct"
+printf '"swap_total_mb":%s,' "$swap_total_mb"
 printf '"disk_root_pct":%s,' "$disk_root"
 printf '"disk_max_pct":%s,' "$disk_max"
 printf '"temp_max_c":%s,' "$temp_max"
+printf '"smart_health":"%s",' "$smart_health"
+printf '"smart_disks_count":%s,' "$smart_disks_count"
+printf '"smart_failed_disks":%s,' "$smart_failed_disks"
+printf '"smart_temp_max":%s,' "$smart_temp_max"
+printf '"smart_reallocated_max":%s,' "$smart_reallocated_max"
 printf '"updates_pending":%s' "$updates"
 printf '}\n'

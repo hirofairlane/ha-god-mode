@@ -1,4 +1,4 @@
-# AUTO-GENERATED — do not edit. Source of truth: god_mode config.yaml + options.json
+# AUTO-GENERATED v0.3.4 -- 18 hosts x 10 metrics + SMART health + online
 rest:
   - resource: http://172.30.32.1:9876/api/hosts
     scan_interval: 60
@@ -13,6 +13,11 @@ rest:
         value_template: "{{ value_json.zeratul.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_zeratul_swap"
+        unique_id: god_host_zeratul_swap
+        value_template: "{{ value_json.zeratul.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_zeratul_disk"
         unique_id: god_host_zeratul_disk
         value_template: "{{ value_json.zeratul.disk_max_pct | default(0) }}"
@@ -36,6 +41,23 @@ rest:
         value_template: "{{ value_json.zeratul.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_zeratul_smart_temp"
+        unique_id: god_host_zeratul_smart_temp
+        value_template: "{{ value_json.zeratul.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_zeratul_smart_failed"
+        unique_id: god_host_zeratul_smart_failed
+        value_template: "{{ value_json.zeratul.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_zeratul_smart_health"
+        unique_id: god_host_zeratul_smart_health
+        value_template: "{{ value_json.zeratul.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_zeratul_os"
+        unique_id: god_host_zeratul_os
+        value_template: "{{ value_json.zeratul._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_h340_cpu"
         unique_id: god_host_h340_cpu
         value_template: "{{ value_json.h340.cpu_pct | default(0) }}"
@@ -46,6 +68,11 @@ rest:
         value_template: "{{ value_json.h340.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_h340_swap"
+        unique_id: god_host_h340_swap
+        value_template: "{{ value_json.h340.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_h340_disk"
         unique_id: god_host_h340_disk
         value_template: "{{ value_json.h340.disk_max_pct | default(0) }}"
@@ -69,6 +96,23 @@ rest:
         value_template: "{{ value_json.h340.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_h340_smart_temp"
+        unique_id: god_host_h340_smart_temp
+        value_template: "{{ value_json.h340.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_h340_smart_failed"
+        unique_id: god_host_h340_smart_failed
+        value_template: "{{ value_json.h340.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_h340_smart_health"
+        unique_id: god_host_h340_smart_health
+        value_template: "{{ value_json.h340.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_h340_os"
+        unique_id: god_host_h340_os
+        value_template: "{{ value_json.h340._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_plex_cpu"
         unique_id: god_host_plex_cpu
         value_template: "{{ value_json.plex.cpu_pct | default(0) }}"
@@ -79,6 +123,11 @@ rest:
         value_template: "{{ value_json.plex.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_plex_swap"
+        unique_id: god_host_plex_swap
+        value_template: "{{ value_json.plex.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_plex_disk"
         unique_id: god_host_plex_disk
         value_template: "{{ value_json.plex.disk_max_pct | default(0) }}"
@@ -102,6 +151,23 @@ rest:
         value_template: "{{ value_json.plex.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_plex_smart_temp"
+        unique_id: god_host_plex_smart_temp
+        value_template: "{{ value_json.plex.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_plex_smart_failed"
+        unique_id: god_host_plex_smart_failed
+        value_template: "{{ value_json.plex.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_plex_smart_health"
+        unique_id: god_host_plex_smart_health
+        value_template: "{{ value_json.plex.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_plex_os"
+        unique_id: god_host_plex_os
+        value_template: "{{ value_json.plex._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_frigate_cpu"
         unique_id: god_host_frigate_cpu
         value_template: "{{ value_json.frigate.cpu_pct | default(0) }}"
@@ -112,6 +178,11 @@ rest:
         value_template: "{{ value_json.frigate.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_frigate_swap"
+        unique_id: god_host_frigate_swap
+        value_template: "{{ value_json.frigate.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_frigate_disk"
         unique_id: god_host_frigate_disk
         value_template: "{{ value_json.frigate.disk_max_pct | default(0) }}"
@@ -135,6 +206,23 @@ rest:
         value_template: "{{ value_json.frigate.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_frigate_smart_temp"
+        unique_id: god_host_frigate_smart_temp
+        value_template: "{{ value_json.frigate.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_frigate_smart_failed"
+        unique_id: god_host_frigate_smart_failed
+        value_template: "{{ value_json.frigate.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_frigate_smart_health"
+        unique_id: god_host_frigate_smart_health
+        value_template: "{{ value_json.frigate.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_frigate_os"
+        unique_id: god_host_frigate_os
+        value_template: "{{ value_json.frigate._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_crafty_cpu"
         unique_id: god_host_crafty_cpu
         value_template: "{{ value_json.crafty.cpu_pct | default(0) }}"
@@ -145,6 +233,11 @@ rest:
         value_template: "{{ value_json.crafty.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_crafty_swap"
+        unique_id: god_host_crafty_swap
+        value_template: "{{ value_json.crafty.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_crafty_disk"
         unique_id: god_host_crafty_disk
         value_template: "{{ value_json.crafty.disk_max_pct | default(0) }}"
@@ -168,6 +261,23 @@ rest:
         value_template: "{{ value_json.crafty.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_crafty_smart_temp"
+        unique_id: god_host_crafty_smart_temp
+        value_template: "{{ value_json.crafty.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_crafty_smart_failed"
+        unique_id: god_host_crafty_smart_failed
+        value_template: "{{ value_json.crafty.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_crafty_smart_health"
+        unique_id: god_host_crafty_smart_health
+        value_template: "{{ value_json.crafty.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_crafty_os"
+        unique_id: god_host_crafty_os
+        value_template: "{{ value_json.crafty._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_jarvis_cpu"
         unique_id: god_host_jarvis_cpu
         value_template: "{{ value_json.jarvis.cpu_pct | default(0) }}"
@@ -178,6 +288,11 @@ rest:
         value_template: "{{ value_json.jarvis.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_jarvis_swap"
+        unique_id: god_host_jarvis_swap
+        value_template: "{{ value_json.jarvis.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_jarvis_disk"
         unique_id: god_host_jarvis_disk
         value_template: "{{ value_json.jarvis.disk_max_pct | default(0) }}"
@@ -201,6 +316,23 @@ rest:
         value_template: "{{ value_json.jarvis.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_jarvis_smart_temp"
+        unique_id: god_host_jarvis_smart_temp
+        value_template: "{{ value_json.jarvis.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_jarvis_smart_failed"
+        unique_id: god_host_jarvis_smart_failed
+        value_template: "{{ value_json.jarvis.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_jarvis_smart_health"
+        unique_id: god_host_jarvis_smart_health
+        value_template: "{{ value_json.jarvis.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_jarvis_os"
+        unique_id: god_host_jarvis_os
+        value_template: "{{ value_json.jarvis._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_nuc_cpu"
         unique_id: god_host_nuc_cpu
         value_template: "{{ value_json.nuc.cpu_pct | default(0) }}"
@@ -211,6 +343,11 @@ rest:
         value_template: "{{ value_json.nuc.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_nuc_swap"
+        unique_id: god_host_nuc_swap
+        value_template: "{{ value_json.nuc.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_nuc_disk"
         unique_id: god_host_nuc_disk
         value_template: "{{ value_json.nuc.disk_max_pct | default(0) }}"
@@ -234,6 +371,23 @@ rest:
         value_template: "{{ value_json.nuc.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_nuc_smart_temp"
+        unique_id: god_host_nuc_smart_temp
+        value_template: "{{ value_json.nuc.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_nuc_smart_failed"
+        unique_id: god_host_nuc_smart_failed
+        value_template: "{{ value_json.nuc.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_nuc_smart_health"
+        unique_id: god_host_nuc_smart_health
+        value_template: "{{ value_json.nuc.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_nuc_os"
+        unique_id: god_host_nuc_os
+        value_template: "{{ value_json.nuc._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_rpi4_8gb_cpu"
         unique_id: god_host_rpi4_8gb_cpu
         value_template: "{{ value_json.rpi4_8gb.cpu_pct | default(0) }}"
@@ -244,6 +398,11 @@ rest:
         value_template: "{{ value_json.rpi4_8gb.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_rpi4_8gb_swap"
+        unique_id: god_host_rpi4_8gb_swap
+        value_template: "{{ value_json.rpi4_8gb.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_rpi4_8gb_disk"
         unique_id: god_host_rpi4_8gb_disk
         value_template: "{{ value_json.rpi4_8gb.disk_max_pct | default(0) }}"
@@ -267,6 +426,23 @@ rest:
         value_template: "{{ value_json.rpi4_8gb.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_rpi4_8gb_smart_temp"
+        unique_id: god_host_rpi4_8gb_smart_temp
+        value_template: "{{ value_json.rpi4_8gb.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_rpi4_8gb_smart_failed"
+        unique_id: god_host_rpi4_8gb_smart_failed
+        value_template: "{{ value_json.rpi4_8gb.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_rpi4_8gb_smart_health"
+        unique_id: god_host_rpi4_8gb_smart_health
+        value_template: "{{ value_json.rpi4_8gb.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_rpi4_8gb_os"
+        unique_id: god_host_rpi4_8gb_os
+        value_template: "{{ value_json.rpi4_8gb._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_pikvm_cpu"
         unique_id: god_host_pikvm_cpu
         value_template: "{{ value_json.pikvm.cpu_pct | default(0) }}"
@@ -277,6 +453,11 @@ rest:
         value_template: "{{ value_json.pikvm.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_pikvm_swap"
+        unique_id: god_host_pikvm_swap
+        value_template: "{{ value_json.pikvm.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_pikvm_disk"
         unique_id: god_host_pikvm_disk
         value_template: "{{ value_json.pikvm.disk_max_pct | default(0) }}"
@@ -300,6 +481,23 @@ rest:
         value_template: "{{ value_json.pikvm.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_pikvm_smart_temp"
+        unique_id: god_host_pikvm_smart_temp
+        value_template: "{{ value_json.pikvm.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_pikvm_smart_failed"
+        unique_id: god_host_pikvm_smart_failed
+        value_template: "{{ value_json.pikvm.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_pikvm_smart_health"
+        unique_id: god_host_pikvm_smart_health
+        value_template: "{{ value_json.pikvm.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_pikvm_os"
+        unique_id: god_host_pikvm_os
+        value_template: "{{ value_json.pikvm._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_manjaro_desktop_cpu"
         unique_id: god_host_manjaro_desktop_cpu
         value_template: "{{ value_json.manjaro_desktop.cpu_pct | default(0) }}"
@@ -310,6 +508,11 @@ rest:
         value_template: "{{ value_json.manjaro_desktop.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_manjaro_desktop_swap"
+        unique_id: god_host_manjaro_desktop_swap
+        value_template: "{{ value_json.manjaro_desktop.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_manjaro_desktop_disk"
         unique_id: god_host_manjaro_desktop_disk
         value_template: "{{ value_json.manjaro_desktop.disk_max_pct | default(0) }}"
@@ -333,6 +536,23 @@ rest:
         value_template: "{{ value_json.manjaro_desktop.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_manjaro_desktop_smart_temp"
+        unique_id: god_host_manjaro_desktop_smart_temp
+        value_template: "{{ value_json.manjaro_desktop.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_manjaro_desktop_smart_failed"
+        unique_id: god_host_manjaro_desktop_smart_failed
+        value_template: "{{ value_json.manjaro_desktop.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_manjaro_desktop_smart_health"
+        unique_id: god_host_manjaro_desktop_smart_health
+        value_template: "{{ value_json.manjaro_desktop.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_manjaro_desktop_os"
+        unique_id: god_host_manjaro_desktop_os
+        value_template: "{{ value_json.manjaro_desktop._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_gigabyte_gaming_cpu"
         unique_id: god_host_gigabyte_gaming_cpu
         value_template: "{{ value_json.gigabyte_gaming.cpu_pct | default(0) }}"
@@ -343,6 +563,11 @@ rest:
         value_template: "{{ value_json.gigabyte_gaming.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_gigabyte_gaming_swap"
+        unique_id: god_host_gigabyte_gaming_swap
+        value_template: "{{ value_json.gigabyte_gaming.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_gigabyte_gaming_disk"
         unique_id: god_host_gigabyte_gaming_disk
         value_template: "{{ value_json.gigabyte_gaming.disk_max_pct | default(0) }}"
@@ -366,6 +591,23 @@ rest:
         value_template: "{{ value_json.gigabyte_gaming.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_gigabyte_gaming_smart_temp"
+        unique_id: god_host_gigabyte_gaming_smart_temp
+        value_template: "{{ value_json.gigabyte_gaming.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_gigabyte_gaming_smart_failed"
+        unique_id: god_host_gigabyte_gaming_smart_failed
+        value_template: "{{ value_json.gigabyte_gaming.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_gigabyte_gaming_smart_health"
+        unique_id: god_host_gigabyte_gaming_smart_health
+        value_template: "{{ value_json.gigabyte_gaming.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_gigabyte_gaming_os"
+        unique_id: god_host_gigabyte_gaming_os
+        value_template: "{{ value_json.gigabyte_gaming._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_macbook_pro_cpu"
         unique_id: god_host_macbook_pro_cpu
         value_template: "{{ value_json.macbook_pro.cpu_pct | default(0) }}"
@@ -376,6 +618,11 @@ rest:
         value_template: "{{ value_json.macbook_pro.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_macbook_pro_swap"
+        unique_id: god_host_macbook_pro_swap
+        value_template: "{{ value_json.macbook_pro.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_macbook_pro_disk"
         unique_id: god_host_macbook_pro_disk
         value_template: "{{ value_json.macbook_pro.disk_max_pct | default(0) }}"
@@ -399,6 +646,23 @@ rest:
         value_template: "{{ value_json.macbook_pro.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_macbook_pro_smart_temp"
+        unique_id: god_host_macbook_pro_smart_temp
+        value_template: "{{ value_json.macbook_pro.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_macbook_pro_smart_failed"
+        unique_id: god_host_macbook_pro_smart_failed
+        value_template: "{{ value_json.macbook_pro.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_macbook_pro_smart_health"
+        unique_id: god_host_macbook_pro_smart_health
+        value_template: "{{ value_json.macbook_pro.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_macbook_pro_os"
+        unique_id: god_host_macbook_pro_os
+        value_template: "{{ value_json.macbook_pro._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_imac101_cpu"
         unique_id: god_host_imac101_cpu
         value_template: "{{ value_json.imac101.cpu_pct | default(0) }}"
@@ -409,6 +673,11 @@ rest:
         value_template: "{{ value_json.imac101.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_imac101_swap"
+        unique_id: god_host_imac101_swap
+        value_template: "{{ value_json.imac101.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_imac101_disk"
         unique_id: god_host_imac101_disk
         value_template: "{{ value_json.imac101.disk_max_pct | default(0) }}"
@@ -432,6 +701,23 @@ rest:
         value_template: "{{ value_json.imac101.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_imac101_smart_temp"
+        unique_id: god_host_imac101_smart_temp
+        value_template: "{{ value_json.imac101.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_imac101_smart_failed"
+        unique_id: god_host_imac101_smart_failed
+        value_template: "{{ value_json.imac101.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_imac101_smart_health"
+        unique_id: god_host_imac101_smart_health
+        value_template: "{{ value_json.imac101.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_imac101_os"
+        unique_id: god_host_imac101_os
+        value_template: "{{ value_json.imac101._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_openwrt_principal_cpu"
         unique_id: god_host_openwrt_principal_cpu
         value_template: "{{ value_json.openwrt_principal.cpu_pct | default(0) }}"
@@ -442,6 +728,11 @@ rest:
         value_template: "{{ value_json.openwrt_principal.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_openwrt_principal_swap"
+        unique_id: god_host_openwrt_principal_swap
+        value_template: "{{ value_json.openwrt_principal.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_openwrt_principal_disk"
         unique_id: god_host_openwrt_principal_disk
         value_template: "{{ value_json.openwrt_principal.disk_max_pct | default(0) }}"
@@ -465,6 +756,23 @@ rest:
         value_template: "{{ value_json.openwrt_principal.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_openwrt_principal_smart_temp"
+        unique_id: god_host_openwrt_principal_smart_temp
+        value_template: "{{ value_json.openwrt_principal.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_openwrt_principal_smart_failed"
+        unique_id: god_host_openwrt_principal_smart_failed
+        value_template: "{{ value_json.openwrt_principal.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_openwrt_principal_smart_health"
+        unique_id: god_host_openwrt_principal_smart_health
+        value_template: "{{ value_json.openwrt_principal.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_openwrt_principal_os"
+        unique_id: god_host_openwrt_principal_os
+        value_template: "{{ value_json.openwrt_principal._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_openwrt_sotano_cpu"
         unique_id: god_host_openwrt_sotano_cpu
         value_template: "{{ value_json.openwrt_sotano.cpu_pct | default(0) }}"
@@ -475,6 +783,11 @@ rest:
         value_template: "{{ value_json.openwrt_sotano.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_openwrt_sotano_swap"
+        unique_id: god_host_openwrt_sotano_swap
+        value_template: "{{ value_json.openwrt_sotano.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_openwrt_sotano_disk"
         unique_id: god_host_openwrt_sotano_disk
         value_template: "{{ value_json.openwrt_sotano.disk_max_pct | default(0) }}"
@@ -498,6 +811,23 @@ rest:
         value_template: "{{ value_json.openwrt_sotano.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_openwrt_sotano_smart_temp"
+        unique_id: god_host_openwrt_sotano_smart_temp
+        value_template: "{{ value_json.openwrt_sotano.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_openwrt_sotano_smart_failed"
+        unique_id: god_host_openwrt_sotano_smart_failed
+        value_template: "{{ value_json.openwrt_sotano.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_openwrt_sotano_smart_health"
+        unique_id: god_host_openwrt_sotano_smart_health
+        value_template: "{{ value_json.openwrt_sotano.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_openwrt_sotano_os"
+        unique_id: god_host_openwrt_sotano_os
+        value_template: "{{ value_json.openwrt_sotano._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_openwrt_arriba_cpu"
         unique_id: god_host_openwrt_arriba_cpu
         value_template: "{{ value_json.openwrt_arriba.cpu_pct | default(0) }}"
@@ -508,6 +838,11 @@ rest:
         value_template: "{{ value_json.openwrt_arriba.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_openwrt_arriba_swap"
+        unique_id: god_host_openwrt_arriba_swap
+        value_template: "{{ value_json.openwrt_arriba.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_openwrt_arriba_disk"
         unique_id: god_host_openwrt_arriba_disk
         value_template: "{{ value_json.openwrt_arriba.disk_max_pct | default(0) }}"
@@ -531,6 +866,23 @@ rest:
         value_template: "{{ value_json.openwrt_arriba.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_openwrt_arriba_smart_temp"
+        unique_id: god_host_openwrt_arriba_smart_temp
+        value_template: "{{ value_json.openwrt_arriba.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_openwrt_arriba_smart_failed"
+        unique_id: god_host_openwrt_arriba_smart_failed
+        value_template: "{{ value_json.openwrt_arriba.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_openwrt_arriba_smart_health"
+        unique_id: god_host_openwrt_arriba_smart_health
+        value_template: "{{ value_json.openwrt_arriba.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_openwrt_arriba_os"
+        unique_id: god_host_openwrt_arriba_os
+        value_template: "{{ value_json.openwrt_arriba._god_os | default('unknown') }}"
+        icon: mdi:laptop
       - name: "god_host_openwrt_caseta_cpu"
         unique_id: god_host_openwrt_caseta_cpu
         value_template: "{{ value_json.openwrt_caseta.cpu_pct | default(0) }}"
@@ -541,6 +893,11 @@ rest:
         value_template: "{{ value_json.openwrt_caseta.mem_pct | default(0) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
+      - name: "god_host_openwrt_caseta_swap"
+        unique_id: god_host_openwrt_caseta_swap
+        value_template: "{{ value_json.openwrt_caseta.swap_pct | default(0) }}"
+        unit_of_measurement: "%"
+        icon: mdi:swap-horizontal
       - name: "god_host_openwrt_caseta_disk"
         unique_id: god_host_openwrt_caseta_disk
         value_template: "{{ value_json.openwrt_caseta.disk_max_pct | default(0) }}"
@@ -564,6 +921,23 @@ rest:
         value_template: "{{ value_json.openwrt_caseta.uptime_s | default(0) }}"
         unit_of_measurement: "s"
         icon: mdi:clock-outline
+      - name: "god_host_openwrt_caseta_smart_temp"
+        unique_id: god_host_openwrt_caseta_smart_temp
+        value_template: "{{ value_json.openwrt_caseta.smart_temp_max | default(0) }}"
+        unit_of_measurement: "°C"
+        icon: mdi:thermometer-alert
+      - name: "god_host_openwrt_caseta_smart_failed"
+        unique_id: god_host_openwrt_caseta_smart_failed
+        value_template: "{{ value_json.openwrt_caseta.smart_failed_disks | default(0) }}"
+        icon: mdi:harddisk-remove
+      - name: "god_host_openwrt_caseta_smart_health"
+        unique_id: god_host_openwrt_caseta_smart_health
+        value_template: "{{ value_json.openwrt_caseta.smart_health | default('unknown') }}"
+        icon: mdi:harddisk
+      - name: "god_host_openwrt_caseta_os"
+        unique_id: god_host_openwrt_caseta_os
+        value_template: "{{ value_json.openwrt_caseta._god_os | default('unknown') }}"
+        icon: mdi:laptop
 
 template:
   - binary_sensor:
@@ -571,124 +945,135 @@ template:
         unique_id: god_host_zeratul_online
         friendly_name: "Proxmox: zeratul online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_zeratul_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_zeratul_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_zeratul_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_zeratul_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "pve_node"
+          friendly_label: "Proxmox: zeratul"
       - name: "god_host_h340_online"
         unique_id: god_host_h340_online
         friendly_name: "Proxmox: h340 online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_h340_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_h340_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_h340_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_h340_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "pve_node"
+          friendly_label: "Proxmox: h340"
       - name: "god_host_plex_online"
         unique_id: god_host_plex_online
         friendly_name: "LXC plex (NAS) online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_plex_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_plex_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_plex_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_plex_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "server"
+          friendly_label: "LXC plex (NAS)"
       - name: "god_host_frigate_online"
         unique_id: god_host_frigate_online
         friendly_name: "Frigate NVR online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_frigate_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_frigate_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_frigate_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_frigate_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "server"
+          friendly_label: "Frigate NVR"
       - name: "god_host_crafty_online"
         unique_id: god_host_crafty_online
         friendly_name: "LXC crafty (MC) online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_crafty_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_crafty_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_crafty_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_crafty_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "server"
+          friendly_label: "LXC crafty (MC)"
       - name: "god_host_jarvis_online"
         unique_id: god_host_jarvis_online
         friendly_name: "LXC jarvis (Ollama) online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_jarvis_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_jarvis_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_jarvis_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_jarvis_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "server"
+          friendly_label: "LXC jarvis (Ollama)"
       - name: "god_host_nuc_online"
         unique_id: god_host_nuc_online
         friendly_name: "Intel NUC online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_nuc_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_nuc_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_nuc_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_nuc_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "sbc"
+          friendly_label: "Intel NUC"
       - name: "god_host_rpi4_8gb_online"
         unique_id: god_host_rpi4_8gb_online
         friendly_name: "Rpi4 8GB online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_rpi4_8gb_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_rpi4_8gb_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_rpi4_8gb_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_rpi4_8gb_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "sbc"
+          friendly_label: "Rpi4 8GB"
       - name: "god_host_pikvm_online"
         unique_id: god_host_pikvm_online
         friendly_name: "PiKVM online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_pikvm_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_pikvm_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_pikvm_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_pikvm_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "sbc"
+          friendly_label: "PiKVM"
       - name: "god_host_manjaro_desktop_online"
         unique_id: god_host_manjaro_desktop_online
         friendly_name: "Manjaro desktop VM online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_manjaro_desktop_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_manjaro_desktop_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_manjaro_desktop_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_manjaro_desktop_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "desktop_linux"
+          friendly_label: "Manjaro desktop VM"
       - name: "god_host_gigabyte_gaming_online"
         unique_id: god_host_gigabyte_gaming_online
         friendly_name: "Gigabyte W11 (RTX 5080) online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_gigabyte_gaming_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_gigabyte_gaming_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_gigabyte_gaming_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_gigabyte_gaming_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "desktop_win"
+          friendly_label: "Gigabyte W11 (RTX 5080)"
       - name: "god_host_macbook_pro_online"
         unique_id: god_host_macbook_pro_online
         friendly_name: "MacBook Pro online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_macbook_pro_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_macbook_pro_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_macbook_pro_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_macbook_pro_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "desktop_mac"
+          friendly_label: "MacBook Pro"
       - name: "god_host_imac101_online"
         unique_id: god_host_imac101_online
         friendly_name: "iMac online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_imac101_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_imac101_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_imac101_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_imac101_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "desktop_mac"
+          friendly_label: "iMac"
       - name: "god_host_openwrt_principal_online"
         unique_id: god_host_openwrt_principal_online
         friendly_name: "OpenWrt Principal online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_openwrt_principal_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_openwrt_principal_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_openwrt_principal_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_openwrt_principal_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "network"
+          friendly_label: "OpenWrt Principal"
       - name: "god_host_openwrt_sotano_online"
         unique_id: god_host_openwrt_sotano_online
         friendly_name: "OpenWrt Sotano online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_openwrt_sotano_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_openwrt_sotano_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_openwrt_sotano_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_openwrt_sotano_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "network"
+          friendly_label: "OpenWrt Sotano"
       - name: "god_host_openwrt_arriba_online"
         unique_id: god_host_openwrt_arriba_online
         friendly_name: "OpenWrt Arriba online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_openwrt_arriba_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_openwrt_arriba_uptime') | int(0)) > 0 }}"
+        state: "{{ states('sensor.god_host_openwrt_arriba_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_openwrt_arriba_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "network"
+          friendly_label: "OpenWrt Arriba"
       - name: "god_host_openwrt_caseta_online"
         unique_id: god_host_openwrt_caseta_online
         friendly_name: "OpenWrt Caseta online"
         device_class: connectivity
-        state: "{{ states('sensor.god_host_openwrt_caseta_cpu') not in ['unknown','unavailable','0','0.0'] or (states('sensor.god_host_openwrt_caseta_uptime') | int(0)) > 0 }}"
-
-group:
-  god_cat_pve_node:
-    name: "GOD category pve_node"
-    entities:
-      - binary_sensor.god_host_zeratul_online
-      - binary_sensor.god_host_h340_online
-  god_cat_server:
-    name: "GOD category server"
-    entities:
-      - binary_sensor.god_host_plex_online
-      - binary_sensor.god_host_frigate_online
-      - binary_sensor.god_host_crafty_online
-      - binary_sensor.god_host_jarvis_online
-  god_cat_sbc:
-    name: "GOD category sbc"
-    entities:
-      - binary_sensor.god_host_nuc_online
-      - binary_sensor.god_host_rpi4_8gb_online
-      - binary_sensor.god_host_pikvm_online
-  god_cat_desktop_linux:
-    name: "GOD category desktop_linux"
-    entities:
-      - binary_sensor.god_host_manjaro_desktop_online
-  god_cat_desktop_win:
-    name: "GOD category desktop_win"
-    entities:
-      - binary_sensor.god_host_gigabyte_gaming_online
-  god_cat_desktop_mac:
-    name: "GOD category desktop_mac"
-    entities:
-      - binary_sensor.god_host_macbook_pro_online
-      - binary_sensor.god_host_imac101_online
-  god_cat_network:
-    name: "GOD category network"
-    entities:
-      - binary_sensor.god_host_openwrt_principal_online
-      - binary_sensor.god_host_openwrt_sotano_online
-      - binary_sensor.god_host_openwrt_arriba_online
-      - binary_sensor.god_host_openwrt_caseta_online
+        state: "{{ states('sensor.god_host_openwrt_caseta_cpu') not in ['unknown','unavailable'] and (states('sensor.god_host_openwrt_caseta_uptime') | int(0)) > 0 }}"
+        attributes:
+          category: "network"
+          friendly_label: "OpenWrt Caseta"
