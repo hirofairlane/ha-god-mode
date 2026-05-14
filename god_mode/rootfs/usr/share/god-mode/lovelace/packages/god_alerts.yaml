@@ -55,59 +55,9 @@ script:
         data:
           value: "{{ now().strftime('%H:%M') }} {{ message | truncate(200) }}"
 
-# ---------------------------------------------------------------------
-# Threshold helpers (binary sensors) -- dynamic for any god_host_*_<metric>
-# ---------------------------------------------------------------------
-# We declare warning/critical templates per metric kind. They evaluate
-# for EVERY host that has the corresponding sensor (via auto-detected
-# host list). The list comes from the binary_sensor.god_host_*_online
-# entities, which we already have for every onboarded host.
-
-template:
-  - sensor:
-      # Aggregated counters used by automation triggers
-      - name: "god_alerts_warning_count"
-        unique_id: god_alerts_warning_count
-        state: >
-          {% set hosts = states.binary_sensor
-              | selectattr('entity_id','match','binary_sensor\\.god_host_.*_online$')
-              | map(attribute='entity_id') | list %}
-          {% set warns = namespace(n=0) %}
-          {% for he in hosts %}
-            {% set h = he | regex_replace('^binary_sensor.god_host_', '') | regex_replace('_online$', '') %}
-            {% set cpu  = states('sensor.god_host_' ~ h ~ '_cpu')  | float(0) %}
-            {% set mem  = states('sensor.god_host_' ~ h ~ '_mem')  | float(0) %}
-            {% set swap = states('sensor.god_host_' ~ h ~ '_swap') | float(0) %}
-            {% set disk = states('sensor.god_host_' ~ h ~ '_disk') | float(0) %}
-            {% set temp = states('sensor.god_host_' ~ h ~ '_temp') | float(0) %}
-            {% set st   = states('sensor.god_host_' ~ h ~ '_smart_temp') | float(0) %}
-            {% if cpu  > 80 or mem  > 85 or swap > 50 or disk > 85 or temp > 75 or st > 55 %}
-              {% set warns.n = warns.n + 1 %}
-            {% endif %}
-          {% endfor %}
-          {{ warns.n }}
-
-      - name: "god_alerts_critical_count"
-        unique_id: god_alerts_critical_count
-        state: >
-          {% set hosts = states.binary_sensor
-              | selectattr('entity_id','match','binary_sensor\\.god_host_.*_online$')
-              | map(attribute='entity_id') | list %}
-          {% set crits = namespace(n=0) %}
-          {% for he in hosts %}
-            {% set h = he | regex_replace('^binary_sensor.god_host_', '') | regex_replace('_online$', '') %}
-            {% set cpu  = states('sensor.god_host_' ~ h ~ '_cpu')  | float(0) %}
-            {% set mem  = states('sensor.god_host_' ~ h ~ '_mem')  | float(0) %}
-            {% set swap = states('sensor.god_host_' ~ h ~ '_swap') | float(0) %}
-            {% set disk = states('sensor.god_host_' ~ h ~ '_disk') | float(0) %}
-            {% set temp = states('sensor.god_host_' ~ h ~ '_temp') | float(0) %}
-            {% set st   = states('sensor.god_host_' ~ h ~ '_smart_temp') | float(0) %}
-            {% set sh   = states('sensor.god_host_' ~ h ~ '_smart_health') %}
-            {% if cpu > 95 or mem > 95 or swap > 80 or disk > 95 or temp > 85 or st > 65 or sh in ['FAILED','FAIL'] %}
-              {% set crits.n = crits.n + 1 %}
-            {% endif %}
-          {% endfor %}
-          {{ crits.n }}
+# Threshold counters (god_alerts_warning_count, god_alerts_critical_count)
+# are generated in god_hosts_linux.yaml by god-generate-yaml.py from the
+# host list. Keep this file focused on the dispatcher + automations.
 
 # ---------------------------------------------------------------------
 # Automations: anti-flap cooldown + per-host state
@@ -157,22 +107,33 @@ automation:
           title: "🟡 GOD Mode warning"
           message: "{{ n }} host(s) en warning. Revisa el dashboard."
 
-  - id: god_alert_host_offline
-    alias: "GOD Mode: host offline alert"
+  - id: god_alert_host_count_drop
+    alias: "GOD Mode: host(s) offline"
     mode: queued
     max: 30
     trigger:
       - platform: state
-        entity_id: binary_sensor.god_host_zeratul_online
-        to: "off"
+        entity_id: sensor.god_hosts_online_count
         for: "00:05:00"
     condition:
       - condition: state
         entity_id: input_select.god_alerts_enabled
         state: "on"
+      - condition: template
+        value_template: >
+          {{ (trigger.to_state.state | int(0)) < (state_attr('sensor.god_hosts_online_count','total') | int(0)) }}
     action:
+      - variables:
+          online: "{{ trigger.to_state.state }}"
+          total: "{{ state_attr('sensor.god_hosts_online_count','total') }}"
+          offline_hosts: >
+            {{ states.binary_sensor
+                 | selectattr('entity_id','match','binary_sensor\\.god_host_.*_online$')
+                 | selectattr('state','eq','off')
+                 | map(attribute='attributes.friendly_label')
+                 | list | join(', ') }}
       - service: script.god_notify
         data:
-          alert_id: "god_offline_zeratul"
-          title: "🔴 GOD Mode: zeratul offline"
-          message: "Zeratul lleva offline 5 min en GOD Mode."
+          alert_id: "god_offline_hosts"
+          title: "🔴 GOD Mode: hosts offline"
+          message: "{{ online }}/{{ total }} hosts online. Offline: {{ offline_hosts }}"

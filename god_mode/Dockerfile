@@ -41,6 +41,7 @@ RUN find /etc/s6-overlay/s6-rc.d \( -name "up" -o -name "run" \) -type f -exec c
         /usr/bin/god-agent.sh \
         /usr/bin/god-bootstrap.sh \
         /usr/bin/god-deploy-packages.sh \
+        /usr/bin/god-generate-yaml.py \
         /usr/bin/god-collector-runner.sh \
         /usr/bin/god-webui-runner.sh
 
