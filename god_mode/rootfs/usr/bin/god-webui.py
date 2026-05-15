@@ -16,6 +16,7 @@ import json
 import os
 import socketserver
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -313,15 +314,35 @@ INDEX_HTML = r"""<!DOCTYPE html>
     <h2>SSH public key</h2>
     <p class="muted">Pega esta clave en <code>~/.ssh/authorized_keys</code> de cada host a monitorear. (Persistida en <code>/homeassistant/god_mode/.ssh/</code>: sobrevive a reinstalación del addon.)</p>
     <pre id="pubkey">cargando…</pre>
-    <button onclick="copyPubkey()">📋 Copy</button>
+    <button onclick="copyPubkey()" title="Copia la clave pública al portapapeles">📋 Copy key</button>
+    <button class="secondary" onclick="toggleInstallCmd()" title="Muestra un comando ssh listo para pegar en tu terminal: pide usuario+host y el wrapper instalará la pubkey en authorized_keys del destino">🛠 Comando para enrolar</button>
     <span id="copy-status" class="muted"></span>
+    <div id="install-cmd-box" style="display:none; margin-top:0.6rem;">
+      <div class="row" style="margin-bottom:0.4rem;">
+        <div><label>SSH user</label><input id="ic-user" value="root"></div>
+        <div><label>Host / IP</label><input id="ic-host" placeholder="192.168.1.50"></div>
+        <div><label>SSH port (opcional)</label><input id="ic-port" type="number" value="22"></div>
+      </div>
+      <p class="muted">Pega esto en tu terminal local; te pedirá la password del host una sola vez:</p>
+      <pre id="install-cmd" style="white-space:pre-wrap;">_</pre>
+      <button onclick="copyInstallCmd()" title="Copia el comando al portapapeles">📋 Copy command</button>
+      <span id="ic-status" class="muted"></span>
+    </div>
   </div>
   <div class="panel">
     <h2>Acciones globales</h2>
-    <button class="secondary" onclick="actionPlaybook('install_agent')">📦 Install agent on ALL</button>
-    <button class="secondary" onclick="actionPlaybook('detect_os')">🔎 Detect OS on ALL</button>
-    <button class="secondary" onclick="actionPlaybook('gather')">🔬 Gather now</button>
-    <button class="secondary" onclick="pveSyncNow()">🔄 PVE sync now</button>
+    <p class="muted">Operaciones masivas sobre TODOS los hosts del inventario. Pueden tardar varios minutos. El resultado se muestra abajo.</p>
+    <button class="secondary" onclick="actionPlaybook('install_agent', null, 'global-out')"
+            title="Despliega o reinstala el agente god-agent en TODOS los hosts. Necesita que la pubkey ya esté en authorized_keys de cada uno. Equivalente a: ansible-playbook install_agent.yml">📦 Install agent on ALL</button>
+    <button class="secondary" onclick="actionPlaybook('detect_os', null, 'global-out')"
+            title="Detecta el SO + arquitectura de cada host (cachea en /data/metadata/) para elegir agente correcto. Necesita SSH funcionando.">🔎 Detect OS on ALL</button>
+    <button class="secondary" onclick="actionPlaybook('gather', null, 'global-out')"
+            title="Fuerza un poll inmediato de métricas de todos los hosts. Normalmente el collector lo hace cada poll_interval (default 60s).">🔬 Gather now</button>
+    <button class="secondary" onclick="actionPlaybook('ping', null, 'global-out')"
+            title="Ansible ping a todos los hosts. Diagnóstico rápido de conectividad SSH.">📡 Ping all</button>
+    <button class="secondary" onclick="pveSyncNow('global-out')"
+            title="Lanza ya un god-pve-sync que consulta la API de cada pve_node con token configurado y refresca la lista de VMs/LXCs. Normalmente corre cada pve_sync_interval (default 5 min).">🔄 PVE sync now</button>
+    <pre id="global-out" style="margin-top:0.6rem; max-height:400px; overflow:auto;">(sin acción ejecutada)</pre>
   </div>
   <div class="panel">
     <h2>Inventory (Ansible)</h2>
@@ -463,7 +484,8 @@ function renderOverview() {
   const hs = Object.entries(state.hosts);
   const total = hs.length;
   const online = hs.filter(([n,m]) => m._ok).length;
-  const offline = total - online - hs.filter(([n,m]) => m._error === 'not_polled_yet').length;
+  const pending = hs.filter(([n,m]) => m._error === 'not_polled_yet').length;
+  const offline = total - online - pending;
   let warn=0, crit=0;
   hs.forEach(([n,m]) => {
     if (!m._ok) return;
@@ -474,20 +496,21 @@ function renderOverview() {
   const pveTotal = Object.values(state.pve).reduce((a,p) => a + ((p.counts||{}).total||0), 0);
   const pveRun   = Object.values(state.pve).reduce((a,p) => a + ((p.counts||{}).running||0), 0);
   $('ov-stats').innerHTML = `
-    <div class="stat"><div class="label">Hosts online</div><div class="value ok">${online}/${total}</div></div>
+    <div class="stat"><div class="label">Hosts online</div><div class="value ${online===0?'ko':'ok'}">${online}/${total}</div></div>
     <div class="stat"><div class="label">Offline</div><div class="value ${offline>0?'ko':''}">${offline}</div></div>
+    <div class="stat"><div class="label">Pending poll</div><div class="value ${pending>0?'warn':''}">${pending}</div></div>
     <div class="stat"><div class="label">Warnings</div><div class="value ${warn>0?'warn':''}">${warn}</div></div>
     <div class="stat"><div class="label">Críticos</div><div class="value ${crit>0?'ko':''}">${crit}</div></div>
     <div class="stat"><div class="label">PVE guests run</div><div class="value">${pveRun}/${pveTotal}</div></div>
   `;
-  // Problemas
+  // Problemas (incluye offline + pending si total)
   const probs = hs.filter(([n,m]) => {
-    if (!m._ok) return m._error && m._error !== 'not_polled_yet';
+    if (!m._ok) return true;   // anything not OK is a problem (offline, pending, parse error, ...)
     const cpu=+m.cpu_pct||0, mem=+m.mem_pct||0, dk=+m.disk_max_pct||0, tp=+m.temp_max_c||0;
     return cpu>80||mem>85||dk>85||tp>75;
   });
   if (probs.length === 0) {
-    $('ov-problems').innerHTML = '<p class="muted">✓ Sin alertas.</p>';
+    $('ov-problems').innerHTML = '<p class="muted">✓ Todos los hosts OK, sin alertas.</p>';
   } else {
     let html = '<table><thead><tr><th>host</th><th>categoría</th><th>problema</th></tr></thead><tbody>';
     probs.forEach(([n,m]) => {
@@ -752,36 +775,77 @@ function copyPubkey() {
     setTimeout(() => $('copy-status').textContent='', 2000);
   });
 }
-async function actionPlaybook(action, host) {
-  const log = $('log');
-  log.textContent = `Running ${action}${host?(' on '+host):''}…\n`;
+
+function buildInstallCmd() {
+  const user = ($('ic-user').value || 'root').trim();
+  const host = ($('ic-host').value || '<host>').trim();
+  const portRaw = ($('ic-port').value || '22').trim();
+  const port = parseInt(portRaw) || 22;
+  const pub  = ($('pubkey').textContent || '').trim();
+  if (!pub || pub === 'cargando…') return '# wait for pubkey to load';
+  const sshOpts = (port !== 22) ? `-p ${port} ` : '';
+  // Single-quoted remote payload: safe vs. local shell, escapes the
+  // inner single quotes in the pubkey (the OpenSSH key never contains ')
+  return `ssh ${sshOpts}${user}@${host} 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -qxF "${pub}" ~/.ssh/authorized_keys || echo "${pub}" >> ~/.ssh/authorized_keys && echo OK_GOD_MODE_KEY_INSTALLED'`;
+}
+function refreshInstallCmd() { $('install-cmd').textContent = buildInstallCmd(); }
+function toggleInstallCmd() {
+  const box = $('install-cmd-box');
+  const open = box.style.display === 'none';
+  box.style.display = open ? 'block' : 'none';
+  if (open) {
+    refreshInstallCmd();
+    ['ic-user','ic-host','ic-port'].forEach(id => {
+      $(id).oninput = refreshInstallCmd;
+    });
+  }
+}
+function copyInstallCmd() {
+  navigator.clipboard.writeText($('install-cmd').textContent).then(() => {
+    $('ic-status').textContent = '✓ copied';
+    setTimeout(() => $('ic-status').textContent='', 2000);
+  });
+}
+
+async function actionPlaybook(action, host, outId) {
+  // outId selects where to dump the output: defaults to onboarding's #log
+  // but Config view passes 'global-out' so it shows where the buttons are.
+  const out = $(outId || 'log');
+  out.textContent = `Running ${action}${host?(' on '+host):''}…\n(esto puede tardar varios minutos para acciones masivas)`;
   try {
     const url = 'api/action/' + action + (host ? ('?limit=' + encodeURIComponent(host)) : '');
     const r = await fetch(url, { method: 'POST' });
-    log.textContent = await r.text();
+    out.textContent = await r.text();
     pollAll();
-  } catch(e) { log.textContent = 'ERROR: '+e; }
+  } catch(e) { out.textContent = 'ERROR: '+e; }
 }
 async function powerAction(action, host) {
-  const log = $('log');
+  const out = $('log');
   const verb = {wake:'Waking', reboot:'Rebooting', shutdown:'Shutting down'}[action] || action;
   if (action !== 'wake' && !confirm(`${verb} ${host}?`)) return;
-  log.textContent = `${verb} ${host}…\n`;
+  out.textContent = `${verb} ${host}…\n`;
   try {
     const r = await fetch(`api/power/${action}/${host}`, { method: 'POST' });
-    log.textContent = await r.text();
+    out.textContent = await r.text();
     setTimeout(pollAll, 3000);
-  } catch(e) { log.textContent = `ERROR: ${e}`; }
+  } catch(e) { out.textContent = `ERROR: ${e}`; }
 }
-async function pveSyncNow() {
+async function pveSyncNow(outId) {
   const s = $('pve-status');
-  s.textContent = ' syncing…';
+  if (s) s.textContent = ' syncing…';
+  const out = outId ? $(outId) : null;
+  if (out) out.textContent = 'Syncing Proxmox API…';
   try {
     const r = await fetch('api/pve_sync', { method: 'POST' });
-    s.textContent = r.ok ? ' ✓ synced' : (' ✗ ' + (await r.text()).slice(0,200));
-    setTimeout(() => s.textContent='', 4000);
+    const txt = await r.text();
+    if (s) s.textContent = r.ok ? ' ✓ synced' : (' ✗ ' + txt.slice(0,200));
+    if (out) out.textContent = txt;
+    setTimeout(() => { if (s) s.textContent=''; }, 4000);
     pollAll();
-  } catch(e) { s.textContent = ' ✗ ' + e; }
+  } catch(e) {
+    if (s) s.textContent = ' ✗ ' + e;
+    if (out) out.textContent = 'ERROR: ' + e;
+  }
 }
 async function onboardSubmit(ev) {
   ev.preventDefault();
@@ -1053,7 +1117,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if p.rfind("/api/pve_sync") != -1:
             try:
                 proc = subprocess.run(
-                    ["/usr/bin/python3", PVE_SYNC_SCRIPT, "once"],
+                    [sys.executable, PVE_SYNC_SCRIPT, "once"],
                     capture_output=True, text=True, timeout=60,
                 )
                 body = f"rc={proc.returncode}\n{proc.stdout[-3000:]}\n--- stderr ---\n{proc.stderr[-1000:]}"
