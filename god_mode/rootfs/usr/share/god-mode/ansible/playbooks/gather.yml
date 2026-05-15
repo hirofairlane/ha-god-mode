@@ -26,7 +26,11 @@
 
     - name: Read per-host metadata if present
       ansible.builtin.set_fact:
-        meta: "{{ lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') | default('{}') | from_json }}"
+        # `lookup(..., errors='ignore')` returns None (not undefined) when
+        # the file is missing, so `| default('{}')` doesn't catch it.
+        # `or '{}'` is what makes this resilient on a fresh install where
+        # no host has metadata yet.
+        meta: "{{ (lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') or '{}') | from_json }}"
 
     - name: Run agent (windows path)
       ansible.builtin.raw: |

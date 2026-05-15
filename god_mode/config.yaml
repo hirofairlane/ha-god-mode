@@ -1,7 +1,7 @@
 ---
 name: GOD Mode
 slug: god_mode
-version: "0.4.1"
+version: "0.4.2"
 description: >-
   Centralized homelab control plane for Home Assistant. Aggregated
   monitoring of Linux hosts, Proxmox cluster (with auto-discovery of
