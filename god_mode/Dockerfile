@@ -38,6 +38,7 @@ RUN find /etc/s6-overlay/s6-rc.d \( -name "up" -o -name "run" \) -type f -exec c
     && chmod +x \
         /usr/bin/god-collector.py \
         /usr/bin/god-webui.py \
+        /usr/bin/god-pve-sync.py \
         /usr/bin/god-agent.sh \
         /usr/bin/god-bootstrap.sh \
         /usr/bin/god-deploy-packages.sh \
@@ -50,7 +51,7 @@ LABEL \
     io.hass.description="Centralized homelab monitoring (Linux + Proxmox)" \
     io.hass.arch="amd64|aarch64" \
     io.hass.type="addon" \
-    io.hass.version="0.2.0" \
+    io.hass.version="0.4.0" \
     maintainer="Sergio (hirofairlane)"
 
 EXPOSE 8099 9876

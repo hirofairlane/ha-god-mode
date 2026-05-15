@@ -31,6 +31,9 @@ OPTS_FILE    = DATA_DIR / "options.json"
 INV_FILE     = DATA_DIR / "ansible" / "inventory.yml"
 CFG_FILE     = DATA_DIR / "ansible" / "ansible.cfg"
 CATEGORIES_FILE = DATA_DIR / "ansible" / "categories.json"
+CHIPS_FILE      = DATA_DIR / "ansible" / "chips.json"
+PARENTS_FILE    = DATA_DIR / "ansible" / "parents.json"
+PVE_CHILDREN_DIR = DATA_DIR / "pve_children"
 PLAYBOOK     = "/usr/share/god-mode/ansible/playbooks/gather.yml"
 PUBKEY_FILE  = DATA_DIR / ".ssh" / "id_ed25519.pub"
 
@@ -40,6 +43,13 @@ LISTEN_PORT  = 9876
 CACHE: dict[str, dict] = {}
 LOCK = threading.Lock()
 START_TS = int(time.time())
+
+# In-memory ring buffer of metric history for sparklines / 6h trend.
+# Schema: HISTORY[host][metric] = [(ts, value), ...]
+# Kept short on purpose: long-term storage belongs in InfluxDB.
+HISTORY: dict[str, dict[str, list[tuple[int, float]]]] = {}
+HISTORY_MAX_POINTS = 360   # 6h @ 60s scan_interval
+HISTORY_METRICS = ("cpu_pct", "mem_pct", "swap_pct", "disk_max_pct", "temp_max_c")
 
 
 def load_options() -> dict:
@@ -73,18 +83,49 @@ def run_playbook() -> int:
         return -1
 
 
-def load_categories() -> dict[str, str]:
-    if CATEGORIES_FILE.exists():
+def _load_json(path: Path) -> dict:
+    if path.exists():
         try:
-            return json.loads(CATEGORIES_FILE.read_text())
+            return json.loads(path.read_text()) or {}
         except Exception:
             pass
     return {}
 
 
+def load_categories() -> dict[str, str]:
+    return _load_json(CATEGORIES_FILE)
+
+
+def load_chips() -> dict[str, str]:
+    return _load_json(CHIPS_FILE)
+
+
+def load_parents() -> dict[str, str]:
+    return _load_json(PARENTS_FILE)
+
+
+def load_pve_children() -> dict[str, dict]:
+    """Returns { node_name: snapshot } merged from /data/pve_children/*.json
+    (excluding _summary.json)."""
+    out: dict[str, dict] = {}
+    if not PVE_CHILDREN_DIR.exists():
+        return out
+    for f in PVE_CHILDREN_DIR.glob("*.json"):
+        if f.name.startswith("_"):
+            continue
+        try:
+            d = json.loads(f.read_text())
+            out[d.get("node") or f.stem] = d
+        except Exception:
+            pass
+    return out
+
+
 def load_metrics_from_disk() -> dict[str, dict]:
     out = {}
-    cats = load_categories()
+    cats    = load_categories()
+    chips   = load_chips()
+    parents = load_parents()
     # Include even hosts that haven't replied yet, so the dashboard can
     # render them as offline.
     for name, cat in cats.items():
@@ -94,6 +135,10 @@ def load_metrics_from_disk() -> dict[str, dict]:
             "_polled_at": 0,
             "_category": cat,
         }
+        if name in chips:
+            out[name]["_chip"] = chips[name]
+        if name in parents:
+            out[name]["_parent"] = parents[name]
     if not METRICS_DIR.exists():
         return out
     for f in METRICS_DIR.glob("*.json"):
@@ -103,10 +148,35 @@ def load_metrics_from_disk() -> dict[str, dict]:
             d["_ok"] = bool(d.get("_ok", True)) and "_error" not in d
             d["_polled_at"] = int(f.stat().st_mtime)
             d["_category"] = cats.get(name, "uncategorized")
+            if name in chips:
+                d["_chip"] = chips[name]
+            if name in parents:
+                d["_parent"] = parents[name]
             out[name] = d
         except Exception as e:
             out[name] = {"_ok": False, "_error": f"parse: {e}", "_category": cats.get(name, "uncategorized")}
     return out
+
+
+def record_history(results: dict[str, dict]) -> None:
+    """Append current metric values to the in-memory ring buffer."""
+    now = int(time.time())
+    for name, m in results.items():
+        if not m.get("_ok"):
+            continue
+        h = HISTORY.setdefault(name, {})
+        for metric in HISTORY_METRICS:
+            v = m.get(metric)
+            if v is None:
+                continue
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                continue
+            series = h.setdefault(metric, [])
+            series.append((now, fv))
+            if len(series) > HISTORY_MAX_POINTS:
+                del series[: len(series) - HISTORY_MAX_POINTS]
 
 
 def poll_loop():
@@ -119,6 +189,7 @@ def poll_loop():
         with LOCK:
             CACHE.clear()
             CACHE.update(results)
+            record_history(results)
         ok = sum(1 for v in results.values() if v.get("_ok"))
         elapsed = time.time() - t0
         print(f"[poll] {time.strftime('%H:%M:%S')} - {ok}/{len(results)} ok rc={rc} ({elapsed:.1f}s)", flush=True)
@@ -183,6 +254,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(200, INV_FILE.read_text())
             except Exception as e:
                 self._send(500, {"error": str(e)})
+            return
+        if self.path == "/api/pve_children":
+            self._send(200, load_pve_children())
+            return
+        if self.path.startswith("/api/pve_node/"):
+            node = self.path.split("/")[-1]
+            snap = load_pve_children().get(node)
+            if snap is None:
+                self._send(404, {"error": f"unknown pve_node {node}"})
+            else:
+                self._send(200, snap)
+            return
+        if self.path.startswith("/api/history/"):
+            # /api/history/<host>[?metric=cpu_pct,mem_pct]
+            from urllib.parse import urlparse, parse_qs
+            u = urlparse(self.path)
+            host = u.path.split("/")[-1]
+            qs = parse_qs(u.query)
+            metrics = qs.get("metric", [",".join(HISTORY_METRICS)])[0].split(",")
+            with LOCK:
+                h = HISTORY.get(host, {})
+                out = {m: list(h.get(m, [])) for m in metrics if m in HISTORY_METRICS}
+            self._send(200, {"host": host, "series": out})
             return
         self._send(404, {"error": "not found"})
 
