@@ -35,220 +35,769 @@ PLAYBOOKS = {
     "detect_os":     "/usr/share/god-mode/ansible/playbooks/detect_os.yml",
 }
 BOOTSTRAP_SCRIPT = "/usr/bin/god-bootstrap.sh"
-CATEGORIES = ["pve_node", "server", "sbc", "desktop_linux", "desktop_win", "desktop_mac", "network"]
+PVE_SYNC_SCRIPT = "/usr/bin/god-pve-sync.py"
+CATEGORIES = [
+    "pve_node", "pve_vm", "pve_lxc",
+    "server", "rpi",
+    "desktop_linux", "desktop_win", "desktop_mac",
+    "openwrt",
+]
+# chip -> (label, mdi icon). Used in the host table for visual cue.
+CHIP_ICONS = {
+    "rpi4":      ("RPi 4",      "mdi:raspberry-pi"),
+    "rpi5":      ("RPi 5",      "mdi:raspberry-pi"),
+    "rpi3":      ("RPi 3",      "mdi:raspberry-pi"),
+    "rpi_zero":  ("RPi Zero",   "mdi:raspberry-pi"),
+    "orange_pi": ("Orange Pi",  "mdi:square-rounded"),
+    "nuc":       ("Intel NUC",  "mdi:cpu-64-bit"),
+    "pikvm":     ("PiKVM",      "mdi:monitor-shimmer"),
+    "rockpi":    ("Rock Pi",    "mdi:chip"),
+}
 
 PORT = 8099
 
 
 INDEX_HTML = r"""<!DOCTYPE html>
-<html lang="en"><head>
+<html lang="es"><head>
 <meta charset="utf-8">
 <title>GOD Mode</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-         background:#0e1116; color:#e6edf3; margin:0; padding:1rem; max-width:1400px; }
-  h1 { color:#f0883e; margin:0 0 1rem 0; }
-  h2 { color:#79c0ff; margin-top:2rem; border-bottom:1px solid #30363d; padding-bottom:0.3rem; }
-  .panel { background:#161b22; border:1px solid #30363d; border-radius:6px;
-           padding:1rem; margin-bottom:1rem; }
-  pre { background:#0e1116; padding:0.6rem; border-radius:4px; overflow-x:auto;
-        white-space:pre-wrap; word-break:break-all; border:1px solid #21262d; }
-  button { background:#238636; color:white; border:none; padding:0.5rem 1rem;
-           border-radius:6px; cursor:pointer; font-family:inherit; margin-right:0.5rem;
-           margin-bottom:0.5rem; }
+  :root {
+    --bg:#0e1116; --panel:#161b22; --panel2:#0d1117; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#f0883e; --link:#79c0ff;
+    --ok:#3fb950; --warn:#d29922; --ko:#f85149;
+    --cat-pve_node:#a371f7; --cat-pve_vm:#bc8cff; --cat-pve_lxc:#bc8cff;
+    --cat-server:#79c0ff; --cat-rpi:#f2cc60;
+    --cat-desktop_linux:#3fb950; --cat-desktop_win:#58a6ff; --cat-desktop_mac:#ff7b72;
+    --cat-openwrt:#d29922;
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text);
+              font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  a { color:var(--link); text-decoration:none; }
+  nav.top {
+    display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;
+    background:var(--panel); border-bottom:1px solid var(--border);
+    padding:0.6rem 1rem; position:sticky; top:0; z-index:10;
+  }
+  nav.top h1 { margin:0; color:var(--accent); font-size:1.1rem; }
+  nav.top .tabs { display:flex; gap:0.2rem; flex-wrap:wrap; flex:1; }
+  nav.top .tabs a {
+    padding:0.4rem 0.7rem; border-radius:5px;
+    color:var(--text); border:1px solid transparent;
+  }
+  nav.top .tabs a:hover { background:var(--panel2); }
+  nav.top .tabs a.active {
+    background:var(--panel2); border-color:var(--border); color:var(--accent);
+  }
+  nav.top .meta { color:var(--muted); font-size:0.85rem; }
+  main { padding:1rem; max-width:1600px; margin:0 auto; }
+  .view { display:none; }
+  .view.active { display:block; }
+  .panel { background:var(--panel); border:1px solid var(--border);
+           border-radius:6px; padding:1rem; margin-bottom:1rem; }
+  .panel h2 { margin:0 0 0.6rem 0; color:var(--link); font-size:1rem;
+              border-bottom:1px solid var(--border); padding-bottom:0.3rem; }
+  pre { background:var(--panel2); padding:0.6rem; border-radius:4px;
+        overflow-x:auto; white-space:pre-wrap; word-break:break-all;
+        border:1px solid var(--border); font-size:0.85rem; }
+  button {
+    background:#238636; color:white; border:none; padding:0.4rem 0.8rem;
+    border-radius:5px; cursor:pointer; font-family:inherit; font-size:0.85rem;
+    margin-right:0.3rem; margin-bottom:0.3rem;
+  }
   button:hover { background:#2ea043; }
-  button.secondary { background:#21262d; }
+  button.secondary { background:#21262d; border:1px solid var(--border); }
   button.secondary:hover { background:#30363d; }
   button.danger { background:#da3633; }
   button.danger:hover { background:#f85149; }
-  table { width:100%; border-collapse:collapse; margin-top:0.5rem; }
-  th, td { padding:0.4rem 0.6rem; text-align:left; border-bottom:1px solid #21262d; }
-  th { background:#21262d; }
-  .ok { color:#3fb950; }
-  .ko { color:#f85149; }
-  .warn { color:#d29922; }
-  .small { font-size:0.85rem; color:#8b949e; }
-  .row { display:flex; gap:1rem; flex-wrap:wrap; }
-  .row > div { flex: 1; min-width: 200px; }
-  input, select { background:#0d1117; color:#e6edf3; border:1px solid #30363d;
-                  padding:0.4rem; border-radius:4px; width:100%; box-sizing:border-box;
-                  font-family:inherit; }
-  label { display:block; margin-bottom:0.2rem; font-size:0.85rem; color:#8b949e; }
-  .cat-pve_node { color:#a371f7; }
-  .cat-server { color:#79c0ff; }
-  .cat-sbc { color:#f2cc60; }
-  .cat-desktop_linux { color:#3fb950; }
-  .cat-desktop_win { color:#58a6ff; }
-  .cat-desktop_mac { color:#ff7b72; }
-  .cat-network { color:#d29922; }
-  #log { max-height:300px; overflow-y:auto; }
+  button.tiny { padding:0.15rem 0.4rem; font-size:0.75rem; margin:0 0.1rem; }
+  input, select {
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    padding:0.35rem; border-radius:4px; font-family:inherit; font-size:0.85rem;
+    width:100%; box-sizing:border-box;
+  }
+  label { display:block; margin-bottom:0.2rem; font-size:0.8rem; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+  th, td { padding:0.35rem 0.5rem; text-align:left; border-bottom:1px solid var(--border); }
+  th { background:var(--panel2); color:var(--muted); cursor:pointer;
+       user-select:none; position:sticky; top:48px; }
+  th.sortable:hover { color:var(--accent); }
+  th.sorted-asc::after { content:" ↑"; color:var(--accent); }
+  th.sorted-desc::after { content:" ↓"; color:var(--accent); }
+  tr.clickable { cursor:pointer; }
+  tr.clickable:hover td { background:var(--panel2); }
+  .ok { color:var(--ok); } .ko { color:var(--ko); } .warn { color:var(--warn); }
+  .muted { color:var(--muted); font-size:0.85rem; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:0.6rem; }
+  .stat { background:var(--panel2); border:1px solid var(--border); border-radius:5px;
+          padding:0.7rem; }
+  .stat .label { font-size:0.75rem; color:var(--muted); text-transform:uppercase; }
+  .stat .value { font-size:1.6rem; color:var(--text); font-weight:bold; margin-top:0.2rem; }
+  .stat .value.ok { color:var(--ok); } .stat .value.ko { color:var(--ko); }
+  .stat .value.warn { color:var(--warn); }
+  .cat-pve_node{color:var(--cat-pve_node);} .cat-pve_vm{color:var(--cat-pve_vm);}
+  .cat-pve_lxc{color:var(--cat-pve_lxc);} .cat-server{color:var(--cat-server);}
+  .cat-rpi{color:var(--cat-rpi);} .cat-desktop_linux{color:var(--cat-desktop_linux);}
+  .cat-desktop_win{color:var(--cat-desktop_win);} .cat-desktop_mac{color:var(--cat-desktop_mac);}
+  .cat-openwrt{color:var(--cat-openwrt);}
+  .child-running { color:var(--ok); } .child-stopped { color:var(--muted); }
+  .pve-card { background:var(--panel2); border:1px solid var(--border);
+              border-radius:5px; padding:0.7rem; margin-bottom:0.8rem; }
+  .pve-card h3 { margin:0; color:var(--cat-pve_node); font-size:0.95rem; }
+  .pve-card .meta { color:var(--muted); font-size:0.8rem; margin:0.3rem 0 0.5rem 0; }
+  .bar { background:var(--panel2); height:4px; border-radius:2px; overflow:hidden; }
+  .bar > div { height:100%; background:var(--ok); }
+  .bar > div.warn { background:var(--warn); } .bar > div.ko { background:var(--ko); }
+  .filter-bar { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.6rem; align-items:center; }
+  .filter-bar input { width:200px; }
+  .filter-bar select { width:auto; }
+  .spark { display:block; }
+  .gauge-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:0.6rem; }
+  .gauge { background:var(--panel2); border:1px solid var(--border); border-radius:5px; padding:0.7rem; }
+  .gauge .label { color:var(--muted); font-size:0.75rem; text-transform:uppercase; }
+  .gauge .value { font-size:1.6rem; font-weight:bold; }
+  #log { max-height:400px; overflow:auto; font-size:0.8rem; }
+  .pill { display:inline-block; padding:0.05rem 0.4rem; border-radius:10px;
+          font-size:0.7rem; background:var(--panel2); border:1px solid var(--border); }
 </style>
 </head><body>
-<h1>👁 GOD Mode</h1>
-<div class="small">Centralized homelab control plane · v0.3.x</div>
 
-<h2>1. SSH public key</h2>
-<div class="panel">
-  <p>Copy this key into <code>~/.ssh/authorized_keys</code> on every host you want to monitor.</p>
-  <pre id="pubkey">loading...</pre>
-  <button onclick="copyKey()">📋 Copy</button>
-  <span id="copy-status" class="small"></span>
-</div>
+<nav class="top">
+  <h1>👁 GOD Mode</h1>
+  <div class="tabs">
+    <a href="#overview" data-view="overview">Overview</a>
+    <a href="#hosts" data-view="hosts">Hosts</a>
+    <a href="#proxmox" data-view="proxmox">Proxmox</a>
+    <a href="#rpi" data-view="rpi">RPi</a>
+    <a href="#openwrt" data-view="openwrt">OpenWrt</a>
+    <a href="#onboard" data-view="onboard">Onboard</a>
+    <a href="#config" data-view="config">Config</a>
+  </div>
+  <span class="meta">v0.4.0 · <span id="last-poll">…</span></span>
+</nav>
 
-<h2>2. Hosts status</h2>
-<div class="panel">
-  <button onclick="refresh()">🔄 Refresh</button>
-  <button class="secondary" onclick="run('ping')">📡 Ansible ping</button>
-  <button class="secondary" onclick="run('install_agent')">📦 Install agent on all</button>
-  <button class="secondary" onclick="run('gather')">🔬 Gather now</button>
-  <table id="hosts">
-    <thead><tr><th>host</th><th>category</th><th>status</th><th>cpu%</th><th>mem%</th><th>disk%</th><th>temp</th><th>updates</th><th>last poll</th><th>actions</th></tr></thead>
-    <tbody></tbody>
-  </table>
-</div>
+<main>
 
-<h2>3. Onboard new host</h2>
-<div class="panel">
-  <p class="small">Add a new host to monitoring. After saving, paste the SSH key into the host's <code>~/.ssh/authorized_keys</code>, then click <b>Install agent</b> to deploy the metrics agent.</p>
-  <form id="onboard-form" onsubmit="onboard(event)">
-    <div class="row">
-      <div>
-        <label>Name (a-z0-9_)</label>
-        <input id="o-name" required pattern="^[a-z0-9_]+$" placeholder="myhost">
-      </div>
-      <div>
-        <label>Address (IP or hostname)</label>
-        <input id="o-addr" required placeholder="192.168.1.50">
-      </div>
-      <div>
-        <label>SSH user</label>
-        <input id="o-user" value="root">
-      </div>
-      <div>
-        <label>SSH port</label>
-        <input id="o-port" type="number" value="22">
-      </div>
-      <div>
-        <label>Category</label>
-        <select id="o-cat">
+<!-- =================== OVERVIEW =================== -->
+<section id="view-overview" class="view active">
+  <div class="panel">
+    <h2>Resumen</h2>
+    <div class="row" id="ov-stats">(cargando…)</div>
+  </div>
+  <div class="panel">
+    <h2>Hosts con problemas</h2>
+    <div id="ov-problems">(cargando…)</div>
+  </div>
+</section>
+
+<!-- =================== HOSTS =================== -->
+<section id="view-hosts" class="view">
+  <div class="panel">
+    <h2>Hosts (<span id="hosts-count">0</span>)</h2>
+    <div class="filter-bar">
+      <input id="hosts-filter" placeholder="filtrar por nombre o IP…" oninput="renderHosts()">
+      <select id="hosts-cat-filter" onchange="renderHosts()">
+        <option value="">todas las categorías</option>
+      </select>
+      <button class="secondary" onclick="actionPlaybook('gather')">🔬 Gather now</button>
+      <button class="secondary" onclick="actionPlaybook('ping')">📡 Ping all</button>
+    </div>
+    <table id="hosts-table">
+      <thead><tr>
+        <th class="sortable" data-key="name">host</th>
+        <th class="sortable" data-key="_category">cat</th>
+        <th class="sortable" data-key="_ok">status</th>
+        <th class="sortable" data-key="cpu_pct">cpu</th>
+        <th class="sortable" data-key="mem_pct">mem</th>
+        <th class="sortable" data-key="disk_max_pct">disk</th>
+        <th class="sortable" data-key="temp_max_c">temp</th>
+        <th class="sortable" data-key="updates_pending">upd</th>
+        <th class="sortable" data-key="_polled_at">last</th>
+        <th>actions</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- =================== PROXMOX =================== -->
+<section id="view-proxmox" class="view">
+  <div class="panel">
+    <h2>Proxmox nodes</h2>
+    <p class="muted">VMs/LXCs descubiertos vía API por cada <code>pve_node</code> con token configurado. Incluye guests apagados.</p>
+    <div class="filter-bar">
+      <button class="secondary" onclick="pveSyncNow()">🔄 Sync now</button>
+      <span id="pve-status" class="muted"></span>
+    </div>
+    <div id="pve-container">(cargando…)</div>
+  </div>
+</section>
+
+<!-- =================== RPi =================== -->
+<section id="view-rpi" class="view">
+  <div class="panel">
+    <h2>RPi & SBC</h2>
+    <p class="muted">Equipos pequeños: RPi, NUCs, Orange Pi, PiKVM…</p>
+    <div id="rpi-container">(cargando…)</div>
+  </div>
+</section>
+
+<!-- =================== OpenWrt =================== -->
+<section id="view-openwrt" class="view">
+  <div class="panel">
+    <h2>OpenWrt routers</h2>
+    <div id="openwrt-container">(cargando…)</div>
+  </div>
+</section>
+
+<!-- =================== HOST DETAIL =================== -->
+<section id="view-host" class="view">
+  <div class="panel">
+    <h2 id="host-title">Host detail</h2>
+    <div id="host-meta" class="muted"></div>
+  </div>
+  <div class="panel">
+    <h2>Métricas actuales</h2>
+    <div class="gauge-grid" id="host-gauges">(cargando…)</div>
+  </div>
+  <div class="panel">
+    <h2>Histórico (últimas 6h, in-memory)</h2>
+    <div id="host-charts">(cargando…)</div>
+    <p class="muted">Para histórico largo, consulta Grafana/InfluxDB.</p>
+  </div>
+  <div class="panel">
+    <h2>Acciones</h2>
+    <div id="host-actions"></div>
+  </div>
+</section>
+
+<!-- =================== ONBOARD =================== -->
+<section id="view-onboard" class="view">
+  <div class="panel">
+    <h2>Onboard new host</h2>
+    <p class="muted">Añade un host. Si das password, el addon hace ssh-copy-id (transient), detect_os, install_agent y gather. Si no, asume que ya pegaste la pubkey manualmente.</p>
+    <form id="onboard-form" onsubmit="onboardSubmit(event)">
+      <div class="row">
+        <div><label>Name (a-z0-9_)</label><input id="o-name" required pattern="^[a-z0-9_]+$" placeholder="myhost"></div>
+        <div><label>Address (IP/hostname)</label><input id="o-addr" required placeholder="192.168.1.50"></div>
+        <div><label>SSH user</label><input id="o-user" value="root"></div>
+        <div><label>SSH port</label><input id="o-port" type="number" value="22"></div>
+        <div><label>Category</label><select id="o-cat">
           <option value="pve_node">pve_node</option>
           <option value="server" selected>server</option>
-          <option value="sbc">sbc</option>
+          <option value="rpi">rpi</option>
           <option value="desktop_linux">desktop_linux</option>
           <option value="desktop_win">desktop_win</option>
           <option value="desktop_mac">desktop_mac</option>
-          <option value="network">network</option>
-        </select>
+          <option value="openwrt">openwrt</option>
+        </select></div>
+        <div><label>Chip (opcional)</label><input id="o-chip" placeholder="rpi4, rpi5, nuc, orange_pi, pikvm…"></div>
+        <div><label>Parent pve_node (opcional)</label><input id="o-parent" placeholder="zeratul"></div>
+        <div><label>Password (one-time, no persiste)</label><input id="o-pass" type="password" placeholder="vacío si pubkey ya está"></div>
       </div>
-      <div>
-        <label>Password (optional - for first-time bootstrap)</label>
-        <input id="o-pass" type="password" placeholder="blank if pubkey already installed">
-      </div>
-    </div>
-    <div class="small" style="margin-top:0.4rem;color:#8b949e;">
-      With password: SSH bootstraps with password, installs pubkey, then runs detect_os + install_agent.
-      Without password: assumes you already added the pubkey to <code>~/.ssh/authorized_keys</code> manually.
-    </div>
-    <div style="margin-top:0.8rem;">
       <button type="submit">➕ Add host</button>
-      <span id="onboard-status" class="small"></span>
-    </div>
-  </form>
-</div>
+      <span id="onboard-status" class="muted"></span>
+    </form>
+  </div>
+  <div class="panel">
+    <h2>Action log</h2>
+    <pre id="log">(sin acciones aún)</pre>
+  </div>
+</section>
 
-<h2>4. Action log</h2>
-<div class="panel">
-  <pre id="log">(none yet)</pre>
-</div>
+<!-- =================== CONFIG =================== -->
+<section id="view-config" class="view">
+  <div class="panel">
+    <h2>SSH public key</h2>
+    <p class="muted">Pega esta clave en <code>~/.ssh/authorized_keys</code> de cada host a monitorear. (Persistida en <code>/homeassistant/god_mode/.ssh/</code>: sobrevive a reinstalación del addon.)</p>
+    <pre id="pubkey">cargando…</pre>
+    <button onclick="copyPubkey()">📋 Copy</button>
+    <span id="copy-status" class="muted"></span>
+  </div>
+  <div class="panel">
+    <h2>Acciones globales</h2>
+    <button class="secondary" onclick="actionPlaybook('install_agent')">📦 Install agent on ALL</button>
+    <button class="secondary" onclick="actionPlaybook('detect_os')">🔎 Detect OS on ALL</button>
+    <button class="secondary" onclick="actionPlaybook('gather')">🔬 Gather now</button>
+    <button class="secondary" onclick="pveSyncNow()">🔄 PVE sync now</button>
+  </div>
+  <div class="panel">
+    <h2>Inventory (Ansible)</h2>
+    <pre id="inventory-view" style="max-height:400px;">cargando…</pre>
+  </div>
+</section>
+
+</main>
 
 <script>
-async function refresh() {
+// ============================================================
+// State
+// ============================================================
+const state = {
+  hosts: {},
+  pve: {},
+  view: 'overview',
+  selectedHost: null,
+  hostsSort: { key: '_category', dir: 'asc' },
+  lastPoll: 0,
+};
+
+// ============================================================
+// Helpers
+// ============================================================
+function $(id) { return document.getElementById(id); }
+function fmtBytes(b) {
+  if (b == null || b === 0) return '-';
+  const u = ['B','K','M','G','T','P']; let i=0, v=b;
+  while (v>=1024 && i<u.length-1) { v/=1024; i++; }
+  return v.toFixed(v<10?1:0) + u[i];
+}
+function fmtUptime(s) {
+  if (!s) return '-';
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+  if (d>0) return `${d}d${h}h`;
+  if (h>0) return `${h}h${m}m`;
+  return `${m}m`;
+}
+function fmtAge(ts) {
+  if (!ts) return '-';
+  const age = Math.floor(Date.now()/1000) - ts;
+  if (age < 60) return age+'s';
+  if (age < 3600) return Math.floor(age/60)+'m';
+  return Math.floor(age/3600)+'h';
+}
+function statusCell(m) {
+  if (m._ok) return '<span class="ok">OK</span>';
+  if (m._error === 'not_polled_yet') return '<span class="warn">pending</span>';
+  return `<span class="ko" title="${(m._error||'').replace(/"/g,'&quot;')}">FAIL</span>`;
+}
+function valueClass(v, warn, crit) {
+  if (v == null) return '';
+  v = parseFloat(v);
+  if (v >= crit) return 'ko';
+  if (v >= warn) return 'warn';
+  return 'ok';
+}
+function escapeHtml(s) {
+  return String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+}
+
+// SVG sparkline. points: [[ts, val], ...]. Auto-scales.
+function sparkline(points, w, h, color) {
+  if (!points || points.length < 2) {
+    return `<svg class="spark" width="${w}" height="${h}"></svg>`;
+  }
+  const xs = points.map(p => p[0]);
+  const ys = points.map(p => p[1]);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const xR = xMax - xMin || 1;
+  const yR = (yMax - yMin) || 1;
+  const pad = 2;
+  const path = points.map((p, i) => {
+    const x = pad + ((p[0]-xMin)/xR) * (w - 2*pad);
+    const y = h - pad - ((p[1]-yMin)/yR) * (h - 2*pad);
+    return (i===0?'M':'L') + x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+  const lastY = ys[ys.length-1];
+  return `<svg class="spark" width="${w}" height="${h}">
+    <path d="${path}" stroke="${color}" stroke-width="1.5" fill="none"/>
+    <text x="${w-2}" y="${h-2}" text-anchor="end" font-size="9" fill="${color}">${lastY.toFixed(0)}</text>
+  </svg>`;
+}
+
+// ============================================================
+// Routing
+// ============================================================
+function route() {
+  const hash = location.hash.replace(/^#/, '') || 'overview';
+  const parts = hash.split('/');
+  const view = parts[0];
+  state.view = view;
+  state.selectedHost = (view === 'host') ? parts[1] : null;
+
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('nav.top .tabs a').forEach(a => a.classList.remove('active'));
+  const target = $('view-' + view);
+  if (target) target.classList.add('active');
+  const link = document.querySelector(`nav.top .tabs a[data-view="${view}"]`);
+  if (link) link.classList.add('active');
+
+  // Trigger view-specific render
+  if (view === 'overview') renderOverview();
+  else if (view === 'hosts') renderHosts();
+  else if (view === 'proxmox') renderProxmox();
+  else if (view === 'rpi') renderRpi();
+  else if (view === 'openwrt') renderOpenwrt();
+  else if (view === 'host' && state.selectedHost) renderHostDetail(state.selectedHost);
+  else if (view === 'config') renderConfig();
+}
+window.addEventListener('hashchange', route);
+
+// ============================================================
+// Data fetching
+// ============================================================
+async function pollAll() {
   try {
-    const pub = await (await fetch('api/pubkey')).text();
-    document.getElementById('pubkey').textContent = pub.trim();
-  } catch(e) { document.getElementById('pubkey').textContent = 'ERROR: '+e; }
-  try {
-    const hosts = await (await fetch('api/hosts')).json();
-    const tbody = document.querySelector('#hosts tbody');
-    tbody.innerHTML = '';
-    const now = Math.floor(Date.now()/1000);
-    const entries = Object.entries(hosts);
-    // Sort: ok first, then by category then by name
-    entries.sort((a,b) => {
-      const okA = a[1]._ok ? 0 : 1, okB = b[1]._ok ? 0 : 1;
-      if (okA !== okB) return okA - okB;
-      const cA = (a[1]._category||'zz'), cB = (b[1]._category||'zz');
-      if (cA !== cB) return cA.localeCompare(cB);
-      return a[0].localeCompare(b[0]);
-    });
-    entries.forEach(([name, m]) => {
-      const tr = document.createElement('tr');
-      const ok = m._ok;
-      const age = m._polled_at ? (now - m._polled_at) + 's' : '-';
-      const cat = m._category || '?';
-      const status = ok ? '<span class="ok">OK</span>'
-                        : (m._error === 'not_polled_yet' ? '<span class="warn">pending</span>'
-                                                          : '<span class="ko">'+(m._error||'fail')+'</span>');
-      const actions = `
-        <button class="secondary" onclick="power('wake','${name}')" title="Wake on LAN">⏻</button>
-        <button class="secondary" onclick="power('reboot','${name}')" title="Reboot via SSH">↻</button>
-        <button class="danger" onclick="power('shutdown','${name}')" title="Shutdown via SSH">⏼</button>`;
-      tr.innerHTML = `<td><b>${name}</b></td><td class="cat-${cat}">${cat}</td><td>${status}</td>` +
-                     `<td>${m.cpu_pct ?? '-'}</td><td>${m.mem_pct ?? '-'}</td>` +
-                     `<td>${m.disk_max_pct ?? '-'}</td><td>${m.temp_max_c ?? '-'}</td>` +
-                     `<td>${m.updates_pending ?? '-'}</td><td class="small">${age}</td>` +
-                     `<td>${actions}</td>`;
-      tbody.appendChild(tr);
-    });
+    const [hosts, pve] = await Promise.all([
+      fetch('api/hosts').then(r => r.json()),
+      fetch('api/pve_children').then(r => r.json()),
+    ]);
+    state.hosts = hosts;
+    state.pve = pve;
+    state.lastPoll = Date.now();
+    $('last-poll').textContent = new Date(state.lastPoll).toLocaleTimeString();
+    // Re-render only the active view
+    route();
   } catch(e) {
-    const tbody = document.querySelector('#hosts tbody');
-    tbody.innerHTML = '<tr><td colspan=9 class="ko">Collector unreachable: '+e+'</td></tr>';
+    $('last-poll').innerHTML = `<span class="ko">collector unreachable</span>`;
   }
 }
-function copyKey() {
-  const text = document.getElementById('pubkey').textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    document.getElementById('copy-status').textContent = '✓ copied';
-    setTimeout(() => document.getElementById('copy-status').textContent='', 2000);
+
+// ============================================================
+// Renderers
+// ============================================================
+function renderOverview() {
+  const hs = Object.entries(state.hosts);
+  const total = hs.length;
+  const online = hs.filter(([n,m]) => m._ok).length;
+  const offline = total - online - hs.filter(([n,m]) => m._error === 'not_polled_yet').length;
+  let warn=0, crit=0;
+  hs.forEach(([n,m]) => {
+    if (!m._ok) return;
+    const cpu=+m.cpu_pct||0, mem=+m.mem_pct||0, dk=+m.disk_max_pct||0, tp=+m.temp_max_c||0;
+    if (cpu>95||mem>95||dk>95||tp>85) crit++;
+    else if (cpu>80||mem>85||dk>85||tp>75) warn++;
+  });
+  const pveTotal = Object.values(state.pve).reduce((a,p) => a + ((p.counts||{}).total||0), 0);
+  const pveRun   = Object.values(state.pve).reduce((a,p) => a + ((p.counts||{}).running||0), 0);
+  $('ov-stats').innerHTML = `
+    <div class="stat"><div class="label">Hosts online</div><div class="value ok">${online}/${total}</div></div>
+    <div class="stat"><div class="label">Offline</div><div class="value ${offline>0?'ko':''}">${offline}</div></div>
+    <div class="stat"><div class="label">Warnings</div><div class="value ${warn>0?'warn':''}">${warn}</div></div>
+    <div class="stat"><div class="label">Críticos</div><div class="value ${crit>0?'ko':''}">${crit}</div></div>
+    <div class="stat"><div class="label">PVE guests run</div><div class="value">${pveRun}/${pveTotal}</div></div>
+  `;
+  // Problemas
+  const probs = hs.filter(([n,m]) => {
+    if (!m._ok) return m._error && m._error !== 'not_polled_yet';
+    const cpu=+m.cpu_pct||0, mem=+m.mem_pct||0, dk=+m.disk_max_pct||0, tp=+m.temp_max_c||0;
+    return cpu>80||mem>85||dk>85||tp>75;
+  });
+  if (probs.length === 0) {
+    $('ov-problems').innerHTML = '<p class="muted">✓ Sin alertas.</p>';
+  } else {
+    let html = '<table><thead><tr><th>host</th><th>categoría</th><th>problema</th></tr></thead><tbody>';
+    probs.forEach(([n,m]) => {
+      let issues = [];
+      if (!m._ok) issues.push(m._error || 'fail');
+      else {
+        if (+m.cpu_pct>=95) issues.push(`CPU ${m.cpu_pct}%`);
+        else if (+m.cpu_pct>=80) issues.push(`CPU ${m.cpu_pct}%`);
+        if (+m.mem_pct>=95) issues.push(`MEM ${m.mem_pct}%`);
+        else if (+m.mem_pct>=85) issues.push(`MEM ${m.mem_pct}%`);
+        if (+m.disk_max_pct>=95) issues.push(`DISK ${m.disk_max_pct}%`);
+        else if (+m.disk_max_pct>=85) issues.push(`DISK ${m.disk_max_pct}%`);
+        if (+m.temp_max_c>=85) issues.push(`TEMP ${m.temp_max_c}°C`);
+        else if (+m.temp_max_c>=75) issues.push(`TEMP ${m.temp_max_c}°C`);
+      }
+      html += `<tr class="clickable" onclick="location.hash='host/${n}'">
+        <td><b>${escapeHtml(n)}</b></td>
+        <td class="cat-${m._category||'server'}">${m._category||'?'}</td>
+        <td>${issues.join(' · ')}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    $('ov-problems').innerHTML = html;
+  }
+}
+
+function hostMatchesFilter(name, m) {
+  const f = ($('hosts-filter').value || '').toLowerCase().trim();
+  const cat = $('hosts-cat-filter').value;
+  if (cat && (m._category || '') !== cat) return false;
+  if (!f) return true;
+  return name.toLowerCase().includes(f) ||
+         String(m.addr || '').toLowerCase().includes(f);
+}
+function buildCatFilterOnce() {
+  const sel = $('hosts-cat-filter');
+  if (sel.options.length > 1) return;
+  const cats = new Set(Object.values(state.hosts).map(m => m._category).filter(Boolean));
+  Array.from(cats).sort().forEach(c => {
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c; sel.appendChild(o);
   });
 }
-async function run(action) {
-  const log = document.getElementById('log');
-  log.textContent = 'Running '+action+'...\n';
+function renderHosts() {
+  buildCatFilterOnce();
+  let rows = Object.entries(state.hosts).filter(([n,m]) => hostMatchesFilter(n,m));
+  // Sort
+  const k = state.hostsSort.key, dir = state.hostsSort.dir === 'asc' ? 1 : -1;
+  rows.sort((a,b) => {
+    let va = (k==='name') ? a[0] : (a[1][k] ?? '');
+    let vb = (k==='name') ? b[0] : (b[1][k] ?? '');
+    if (typeof va === 'number' || typeof vb === 'number') {
+      return (parseFloat(va)||0 - parseFloat(vb)||0) * dir;
+    }
+    return String(va).localeCompare(String(vb)) * dir;
+  });
+  $('hosts-count').textContent = rows.length;
+  let html = '';
+  rows.forEach(([n,m]) => {
+    const cat = m._category || '?';
+    html += `<tr class="clickable" onclick="if(event.target.tagName!=='BUTTON')location.hash='host/${n}'">
+      <td><b>${escapeHtml(n)}</b><div class="muted" style="font-size:0.7rem">${escapeHtml(m.addr||'')}</div></td>
+      <td class="cat-${cat}">${cat}</td>
+      <td>${statusCell(m)}</td>
+      <td class="${valueClass(m.cpu_pct,80,95)}">${m.cpu_pct ?? '-'}</td>
+      <td class="${valueClass(m.mem_pct,85,95)}">${m.mem_pct ?? '-'}</td>
+      <td class="${valueClass(m.disk_max_pct,85,95)}">${m.disk_max_pct ?? '-'}</td>
+      <td class="${valueClass(m.temp_max_c,75,85)}">${m.temp_max_c ?? '-'}</td>
+      <td>${m.updates_pending ?? '-'}</td>
+      <td class="muted">${fmtAge(m._polled_at)}</td>
+      <td>
+        <button class="tiny secondary" onclick="event.stopPropagation();powerAction('wake','${n}')" title="WoL">⏻</button>
+        <button class="tiny secondary" onclick="event.stopPropagation();powerAction('reboot','${n}')" title="reboot">↻</button>
+        <button class="tiny danger" onclick="event.stopPropagation();powerAction('shutdown','${n}')" title="shutdown">⏼</button>
+      </td>
+    </tr>`;
+  });
+  $('hosts-table').querySelector('tbody').innerHTML = html;
+  // Update sort indicators
+  document.querySelectorAll('#hosts-table th.sortable').forEach(th => {
+    th.classList.remove('sorted-asc','sorted-desc');
+    if (th.dataset.key === k) th.classList.add(state.hostsSort.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+  });
+}
+function attachSortHandlers() {
+  document.querySelectorAll('#hosts-table th.sortable').forEach(th => {
+    th.onclick = () => {
+      const k = th.dataset.key;
+      if (state.hostsSort.key === k) {
+        state.hostsSort.dir = state.hostsSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.hostsSort = { key: k, dir: 'asc' };
+      }
+      renderHosts();
+    };
+  });
+}
+
+function renderProxmox() {
+  const nodes = Object.keys(state.pve).sort();
+  if (nodes.length === 0) {
+    $('pve-container').innerHTML = '<p class="muted">No hay pve_node con token configurado. Pon <code>pve_token_id</code> + <code>pve_token_secret</code> en las opciones del addon, por cada nodo.</p>';
+    return;
+  }
+  let html = '';
+  nodes.forEach(n => {
+    const s = state.pve[n];
+    if (!s.ok) {
+      html += `<div class="pve-card"><h3>${n}</h3><div class="ko muted">error: ${escapeHtml(s.error||'?')}</div></div>`;
+      return;
+    }
+    const ns = s.node_status || {}, c = s.counts || {};
+    html += `<div class="pve-card">
+      <h3>${n} <span class="muted">(${escapeHtml(s.addr)})</span></h3>
+      <div class="meta">
+        estado <b>${ns.status||'?'}</b> · CPU ${ns.cpu_pct??'-'}% · RAM ${ns.mem_pct??'-'}% (${fmtBytes(ns.mem_used_b)}/${fmtBytes(ns.mem_max_b)}) ·
+        disco ${ns.disk_pct??'-'}% (${fmtBytes(ns.disk_used_b)}/${fmtBytes(ns.disk_max_b)}) ·
+        uptime ${fmtUptime(ns.uptime_s)} ·
+        guests: ${c.running||0}/${c.total||0} run (${c.vms||0} VM, ${c.lxcs||0} LXC)
+      </div>
+      <table>
+        <thead><tr><th>vmid</th><th>name</th><th>type</th><th>status</th><th>cpu%</th><th>mem%</th><th>disk%</th><th>uptime</th><th>tags</th></tr></thead>
+        <tbody>`;
+    (s.guests || []).forEach(g => {
+      const cls = g.status === 'running' ? 'child-running' : 'child-stopped';
+      html += `<tr>
+        <td>${g.vmid}</td>
+        <td><b>${escapeHtml(g.name||'')}</b></td>
+        <td>${g.type}</td>
+        <td class="${cls}">${g.status}${g.template?' <span class="pill">tpl</span>':''}</td>
+        <td class="${valueClass(g.cpu_pct,80,95)}">${g.cpu_pct ?? '-'}</td>
+        <td class="${valueClass(g.mem_pct,85,95)}">${g.mem_pct ?? '-'}</td>
+        <td class="${valueClass(g.disk_pct,85,95)}">${g.disk_pct ?? '-'}</td>
+        <td class="muted">${fmtUptime(g.uptime_s)}</td>
+        <td class="muted">${escapeHtml(g.tags||'')}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  });
+  $('pve-container').innerHTML = html;
+}
+
+function renderCategoryView(catName, containerId) {
+  const rows = Object.entries(state.hosts).filter(([n,m]) => (m._category||'') === catName);
+  if (rows.length === 0) {
+    $(containerId).innerHTML = `<p class="muted">Ningún host con categoría <code>${catName}</code>.</p>`;
+    return;
+  }
+  let html = `<table>
+    <thead><tr><th>host</th><th>chip</th><th>status</th><th>cpu%</th><th>mem%</th><th>disk%</th><th>temp</th><th>uptime</th><th>last</th></tr></thead>
+    <tbody>`;
+  rows.forEach(([n,m]) => {
+    html += `<tr class="clickable" onclick="location.hash='host/${n}'">
+      <td><b>${escapeHtml(n)}</b><div class="muted" style="font-size:0.7rem">${escapeHtml(m.addr||'')}</div></td>
+      <td class="muted">${escapeHtml(m._chip||'-')}</td>
+      <td>${statusCell(m)}</td>
+      <td class="${valueClass(m.cpu_pct,80,95)}">${m.cpu_pct ?? '-'}</td>
+      <td class="${valueClass(m.mem_pct,85,95)}">${m.mem_pct ?? '-'}</td>
+      <td class="${valueClass(m.disk_max_pct,85,95)}">${m.disk_max_pct ?? '-'}</td>
+      <td class="${valueClass(m.temp_max_c,75,85)}">${m.temp_max_c ?? '-'}</td>
+      <td>${fmtUptime(m.uptime_s)}</td>
+      <td class="muted">${fmtAge(m._polled_at)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  $(containerId).innerHTML = html;
+}
+function renderRpi() { renderCategoryView('rpi', 'rpi-container'); }
+function renderOpenwrt() { renderCategoryView('openwrt', 'openwrt-container'); }
+
+async function renderHostDetail(name) {
+  const m = state.hosts[name];
+  if (!m) {
+    $('host-title').textContent = `Host '${name}' no encontrado`;
+    $('host-meta').textContent = '';
+    $('host-gauges').innerHTML = '';
+    $('host-charts').innerHTML = '';
+    $('host-actions').innerHTML = '';
+    return;
+  }
+  $('host-title').innerHTML = `<span class="cat-${m._category||'server'}">${escapeHtml(name)}</span>`;
+  let metaParts = [
+    `IP: <b>${escapeHtml(m.addr || '?')}</b>`,
+    `categoría: <span class="cat-${m._category||'?'}">${m._category||'?'}</span>`,
+  ];
+  if (m._chip) metaParts.push(`chip: <code>${escapeHtml(m._chip)}</code>`);
+  if (m._parent) metaParts.push(`parent: <a href="#host/${m._parent}">${m._parent}</a>`);
+  metaParts.push(`OS: ${escapeHtml(m._god_os || '?')}`);
+  metaParts.push(`uptime: ${fmtUptime(m.uptime_s)}`);
+  metaParts.push(`updates: ${m.updates_pending ?? '?'}`);
+  metaParts.push(`SMART: ${escapeHtml(m.smart_health || '-')}`);
+  metaParts.push(`status: ${statusCell(m)}`);
+  $('host-meta').innerHTML = metaParts.join(' · ');
+
+  // Gauges
+  const gauges = [
+    ['CPU', m.cpu_pct, '%', 80, 95],
+    ['RAM', m.mem_pct, '%', 85, 95],
+    ['Swap', m.swap_pct, '%', 50, 80],
+    ['Disk', m.disk_max_pct, '%', 85, 95],
+    ['Temp', m.temp_max_c, '°C', 75, 85],
+    ['SMART temp', m.smart_temp_max, '°C', 55, 65],
+    ['Load 1m', m.load_1m, '', 999, 9999],
+    ['Updates', m.updates_pending, '', 999, 9999],
+  ];
+  $('host-gauges').innerHTML = gauges.map(([lbl,v,u,w,c]) => `
+    <div class="gauge">
+      <div class="label">${lbl}</div>
+      <div class="value ${valueClass(v,w,c)}">${v ?? '-'}${v!=null?u:''}</div>
+    </div>
+  `).join('');
+
+  // Charts: fetch history once
   try {
-    const r = await fetch('api/action/'+action, { method: 'POST' });
+    const h = await (await fetch('api/history/' + encodeURIComponent(name))).json();
+    const series = h.series || {};
+    const W = 280, H = 60;
+    const colors = { cpu_pct:'#79c0ff', mem_pct:'#3fb950', swap_pct:'#d29922',
+                     disk_max_pct:'#a371f7', temp_max_c:'#ff7b72' };
+    const labels = { cpu_pct:'CPU %', mem_pct:'RAM %', swap_pct:'Swap %',
+                     disk_max_pct:'Disk %', temp_max_c:'Temp °C' };
+    let html = '<div class="gauge-grid">';
+    ['cpu_pct','mem_pct','swap_pct','disk_max_pct','temp_max_c'].forEach(k => {
+      const pts = series[k] || [];
+      html += `<div class="gauge">
+        <div class="label">${labels[k]} <span class="muted">(${pts.length} pts)</span></div>
+        ${sparkline(pts, W, H, colors[k])}
+      </div>`;
+    });
+    html += '</div>';
+    $('host-charts').innerHTML = html;
+  } catch(e) {
+    $('host-charts').innerHTML = `<p class="ko">history fetch failed: ${e}</p>`;
+  }
+
+  $('host-actions').innerHTML = `
+    <button onclick="actionPlaybook('gather','${name}')">🔬 Gather now</button>
+    <button class="secondary" onclick="actionPlaybook('install_agent','${name}')">📦 Reinstall agent</button>
+    <button class="secondary" onclick="powerAction('wake','${name}')">⏻ WoL</button>
+    <button class="secondary" onclick="powerAction('reboot','${name}')">↻ Reboot</button>
+    <button class="danger" onclick="powerAction('shutdown','${name}')">⏼ Shutdown</button>
+  `;
+}
+
+async function renderConfig() {
+  try {
+    const pub = await (await fetch('api/pubkey')).text();
+    $('pubkey').textContent = pub.trim();
+  } catch(e) { $('pubkey').textContent = 'ERROR: '+e; }
+  try {
+    const inv = await (await fetch('api/inventory')).text();
+    $('inventory-view').textContent = inv;
+  } catch(e) { $('inventory-view').textContent = 'ERROR: '+e; }
+}
+
+// ============================================================
+// Actions
+// ============================================================
+function copyPubkey() {
+  navigator.clipboard.writeText($('pubkey').textContent).then(() => {
+    $('copy-status').textContent = '✓ copied';
+    setTimeout(() => $('copy-status').textContent='', 2000);
+  });
+}
+async function actionPlaybook(action, host) {
+  const log = $('log');
+  log.textContent = `Running ${action}${host?(' on '+host):''}…\n`;
+  try {
+    const url = 'api/action/' + action + (host ? ('?limit=' + encodeURIComponent(host)) : '');
+    const r = await fetch(url, { method: 'POST' });
     log.textContent = await r.text();
-    refresh();
+    pollAll();
   } catch(e) { log.textContent = 'ERROR: '+e; }
 }
-async function power(action, host) {
-  const log = document.getElementById('log');
+async function powerAction(action, host) {
+  const log = $('log');
   const verb = {wake:'Waking', reboot:'Rebooting', shutdown:'Shutting down'}[action] || action;
   if (action !== 'wake' && !confirm(`${verb} ${host}?`)) return;
-  log.textContent = `${verb} ${host}...\n`;
+  log.textContent = `${verb} ${host}…\n`;
   try {
     const r = await fetch(`api/power/${action}/${host}`, { method: 'POST' });
     log.textContent = await r.text();
-    setTimeout(refresh, 3000);
+    setTimeout(pollAll, 3000);
   } catch(e) { log.textContent = `ERROR: ${e}`; }
 }
-
-async function onboard(ev) {
+async function pveSyncNow() {
+  const s = $('pve-status');
+  s.textContent = ' syncing…';
+  try {
+    const r = await fetch('api/pve_sync', { method: 'POST' });
+    s.textContent = r.ok ? ' ✓ synced' : (' ✗ ' + (await r.text()).slice(0,200));
+    setTimeout(() => s.textContent='', 4000);
+    pollAll();
+  } catch(e) { s.textContent = ' ✗ ' + e; }
+}
+async function onboardSubmit(ev) {
   ev.preventDefault();
-  const status = document.getElementById('onboard-status');
-  const log = document.getElementById('log');
+  const status = $('onboard-status');
   const body = {
-    name: document.getElementById('o-name').value,
-    addr: document.getElementById('o-addr').value,
-    user: document.getElementById('o-user').value || 'root',
-    port: parseInt(document.getElementById('o-port').value || '22'),
-    category: document.getElementById('o-cat').value,
-    password: document.getElementById('o-pass').value || '',
+    name: $('o-name').value,
+    addr: $('o-addr').value,
+    user: $('o-user').value || 'root',
+    port: parseInt($('o-port').value || '22'),
+    category: $('o-cat').value,
+    chip: $('o-chip').value || '',
+    parent: $('o-parent').value || '',
+    password: $('o-pass').value || '',
   };
-  // Wipe password field immediately so it doesn't sit in DOM
-  document.getElementById('o-pass').value = '';
-  status.textContent = ' submitting...';
+  $('o-pass').value = '';   // wipe immediately
+  status.textContent = ' submitting…';
   try {
     const r = await fetch('api/onboard', {
       method: 'POST',
@@ -256,20 +805,24 @@ async function onboard(ev) {
       body: JSON.stringify(body),
     });
     const txt = await r.text();
-    log.textContent = txt;
+    $('log').textContent = txt;
     if (r.ok) {
-      status.textContent = ' ✓ added (paste pubkey into host then click Install agent)';
-      document.getElementById('onboard-form').reset();
-      refresh();
+      status.textContent = ' ✓ added';
+      $('onboard-form').reset();
+      pollAll();
     } else {
-      status.textContent = ' ✗ ' + txt;
+      status.textContent = ' ✗ ' + txt.slice(0,200);
     }
-  } catch(e) {
-    status.textContent = ' ERROR: ' + e;
-  }
+  } catch(e) { status.textContent = ' ERROR: ' + e; }
 }
-refresh();
-setInterval(refresh, 10000);
+
+// ============================================================
+// Init
+// ============================================================
+attachSortHandlers();
+route();
+pollAll();
+setInterval(pollAll, 10000);
 </script>
 </body></html>
 """
@@ -423,6 +976,12 @@ def onboard_host(payload: dict) -> tuple[int, str]:
         return 409, f"host '{name}' already exists"
 
     new_host = {"name": name, "addr": addr, "user": user, "port": port, "category": category}
+    chip   = (payload.get("chip")   or "").strip()
+    parent = (payload.get("parent") or "").strip()
+    if chip:
+        new_host["chip"] = chip
+    if parent:
+        new_host["parent"] = parent
     opts.setdefault("hosts", []).append(new_host)
     try:
         OPTS_FILE.write_text(json.dumps(opts, indent=2))
@@ -490,11 +1049,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = self.path
-        # /api/action/<name>
+        # /api/pve_sync — force a one-shot Proxmox sync
+        if p.rfind("/api/pve_sync") != -1:
+            try:
+                proc = subprocess.run(
+                    ["/usr/bin/python3", PVE_SYNC_SCRIPT, "once"],
+                    capture_output=True, text=True, timeout=60,
+                )
+                body = f"rc={proc.returncode}\n{proc.stdout[-3000:]}\n--- stderr ---\n{proc.stderr[-1000:]}"
+                self._send(200 if proc.returncode == 0 else 500, body, "text/plain; charset=utf-8")
+            except Exception as e:
+                self._send(500, f"pve_sync exception: {e}", "text/plain")
+            return
+        # /api/action/<name>[?limit=<host>]
         idx_action = p.rfind("/api/action/")
         if idx_action != -1:
-            action = p[idx_action + len("/api/action/"):].strip("/")
-            self._send(200, run_playbook(action), "text/plain; charset=utf-8")
+            from urllib.parse import urlparse, parse_qs
+            u = urlparse(p[idx_action + len("/api"):])  # rebuild "/action/<name>?..."
+            action = u.path.split("/")[-1].strip()
+            limit = parse_qs(u.query).get("limit", [None])[0]
+            self._send(200, run_playbook(action, limit=limit), "text/plain; charset=utf-8")
             return
         # /api/onboard
         idx_onboard = p.rfind("/api/onboard")
