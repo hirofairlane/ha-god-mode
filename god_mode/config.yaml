@@ -1,7 +1,7 @@
 ---
 name: GOD Mode
 slug: god_mode
-version: "0.4.2"
+version: "0.4.3"
 description: >-
   Centralized homelab control plane for Home Assistant. Aggregated
   monitoring of Linux hosts, Proxmox cluster (with auto-discovery of
@@ -43,24 +43,24 @@ options:
         pve_token_id: "god@pve!godmode", pve_token_secret: "" }
     - { name: h340,              addr: 192.168.1.129, user: root,   category: pve_node, mac: "d0:bf:9c:46:64:a5",
         pve_token_id: "god@pve!godmode", pve_token_secret: "" }
+    - { name: observer,          addr: 192.168.1.124, user: root,   category: pve_node,
+        pve_token_id: "god@pve!godmode", pve_token_secret: "" }
     # ---- Linux servers (VMs/CTs you want monitored over SSH in addition
     #      to the API-level info their parent pve_node already exposes) ----
     - { name: plex,              addr: 192.168.1.123, user: root,   category: server,        parent: zeratul }
-    - { name: frigate,           addr: 192.168.1.170, user: sergio, category: server,        parent: zeratul }
+    - { name: frigate,           addr: 192.168.1.170, user: sergio, category: server,        parent: observer }
     - { name: crafty,            addr: 192.168.1.36,  user: root,   category: server,        parent: zeratul }
     - { name: jarvis,            addr: 192.168.1.70,  user: root,   category: server,        parent: zeratul }
-    # ---- RPi / SBCs (chip = rpi4|rpi5|nuc|orange_pi|pikvm|...) ----
-    - { name: nuc,               addr: 192.168.1.181, user: root,   category: rpi, chip: nuc }
-    - { name: rpi4_8gb,          addr: 192.168.1.216, user: root,   category: rpi, chip: rpi4 }
+    # ---- RPi / SBCs ----
+    # Note: pikvm has a read-only filesystem; agent writes to tmpfs only.
     - { name: pikvm,             addr: 192.168.0.105, user: root,   category: rpi, chip: pikvm }
-    # ---- Linux desktops (always-on are rare; usually on-demand) ----
+    # ---- Linux desktops ----
     - { name: manjaro_desktop,   addr: 192.168.0.230, user: sergio, category: desktop_linux }
-    # ---- Windows / gaming PC (Cachy OS today; classify as desktop_win
-    #      until full reclassification) ----
-    - { name: gigabyte_gaming,   addr: 192.168.0.25,  user: sergio, category: desktop_win }
-    # ---- macOS ----
-    - { name: macbook_pro,       addr: 192.168.1.215, user: sergio, category: desktop_mac }
-    - { name: imac101,           addr: 192.168.0.114, user: sergio, category: desktop_mac }
+    # Dual boot CachyOS + W11; RTX 5080 + 64GB; futuro nodo IA pesado.
+    # WoL-on-demand (no siempre encendido).
+    - { name: gigabyte_gaming,   addr: 192.168.0.25,  user: sergio, category: desktop_linux, mac: "10:ff:e0:3e:ef:0a" }
+    # iMac con Manjaro; desktop ocasional, casi siempre apagado.
+    - { name: imac101,           addr: 192.168.0.114, user: sergio, category: desktop_linux }
     # ---- OpenWrt routers ----
     - { name: openwrt_principal, addr: 192.168.0.1,   user: root,   category: openwrt }
     - { name: openwrt_sotano,    addr: 192.168.1.7,   user: root,   category: openwrt }
