@@ -51,7 +51,7 @@ LABEL \
     io.hass.description="Centralized homelab monitoring (Linux + Proxmox)" \
     io.hass.arch="amd64|aarch64" \
     io.hass.type="addon" \
-    io.hass.version="0.4.2" \
+    io.hass.version="0.4.3" \
     maintainer="Sergio (hirofairlane)"
 
 EXPOSE 8099 9876
