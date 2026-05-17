@@ -42,6 +42,14 @@ if [ ! -f "${SSH_DIR}/id_ed25519" ]; then
         cp "${HA_BACKUP_DIR}/id_ed25519.pub" "${SSH_DIR}/id_ed25519.pub"
         chmod 600 "${SSH_DIR}/id_ed25519"
         chmod 644 "${SSH_DIR}/id_ed25519.pub"
+        # Also restore RSA fallback if present
+        if [ -f "${HA_BACKUP_DIR}/id_rsa" ]; then
+            cp "${HA_BACKUP_DIR}/id_rsa"     "${SSH_DIR}/id_rsa"
+            cp "${HA_BACKUP_DIR}/id_rsa.pub" "${SSH_DIR}/id_rsa.pub" 2>/dev/null || true
+            chmod 600 "${SSH_DIR}/id_rsa"
+            chmod 644 "${SSH_DIR}/id_rsa.pub" 2>/dev/null || true
+            bashio::log.info "Restored RSA fallback key"
+        fi
     else
         bashio::log.warning "==============================================================="
         bashio::log.warning "GENERATING A NEW SSH KEYPAIR."
@@ -61,8 +69,15 @@ if mkdir -p "${HA_BACKUP_DIR}" 2>/dev/null; then
     chmod 700 "${HA_BACKUP_DIR}" 2>/dev/null || true
     cp -f "${SSH_DIR}/id_ed25519"     "${HA_BACKUP_DIR}/id_ed25519"     2>/dev/null || true
     cp -f "${SSH_DIR}/id_ed25519.pub" "${HA_BACKUP_DIR}/id_ed25519.pub" 2>/dev/null || true
+    # Also backup the RSA fallback key if present (used for Dropbear-only hosts)
+    if [ -f "${SSH_DIR}/id_rsa" ]; then
+        cp -f "${SSH_DIR}/id_rsa"     "${HA_BACKUP_DIR}/id_rsa"     2>/dev/null || true
+        cp -f "${SSH_DIR}/id_rsa.pub" "${HA_BACKUP_DIR}/id_rsa.pub" 2>/dev/null || true
+    fi
     chmod 600 "${HA_BACKUP_DIR}/id_ed25519"     2>/dev/null || true
     chmod 644 "${HA_BACKUP_DIR}/id_ed25519.pub" 2>/dev/null || true
+    chmod 600 "${HA_BACKUP_DIR}/id_rsa"         2>/dev/null || true
+    chmod 644 "${HA_BACKUP_DIR}/id_rsa.pub"     2>/dev/null || true
 else
     bashio::log.warning "Could not write SSH backup to ${HA_BACKUP_DIR} (read-only?). Key still in /data/.ssh."
 fi
@@ -99,17 +114,23 @@ PVE_NODES=$(echo "${HOSTS_JSON}" | jq -r '[.[] | select(.category == "pve_node")
 
 emit_host_block() {
     local entry="$1"
-    local name addr user port chip parent
+    local name addr user port chip parent ssh_key_type
     name=$(echo   "${entry}" | jq -r '.name')
     addr=$(echo   "${entry}" | jq -r '.addr')
     user=$(echo   "${entry}" | jq -r --arg d "${SSH_USER_DEFAULT}" '.user // $d')
     port=$(echo   "${entry}" | jq -r '.port // 22')
     chip=$(echo   "${entry}" | jq -r '.chip // ""')
     parent=$(echo "${entry}" | jq -r '.parent // ""')
+    ssh_key_type=$(echo "${entry}" | jq -r '.ssh_key_type // ""')
     echo "        ${name}:"
     echo "          ansible_host: ${addr}"
     echo "          ansible_user: ${user}"
     echo "          ansible_port: ${port}"
+    # Hosts with legacy Dropbear (no ed25519) can set ssh_key_type: rsa
+    # to use the RSA fallback key instead of the default ed25519.
+    if [ "${ssh_key_type}" = "rsa" ] && [ -f "${SSH_DIR}/id_rsa" ]; then
+        echo "          ansible_ssh_private_key_file: ${SSH_DIR}/id_rsa"
+    fi
     if [ -n "${chip}" ];   then echo "          god_chip: ${chip}";     fi
     if [ -n "${parent}" ]; then echo "          god_parent: ${parent}"; fi
     return 0
