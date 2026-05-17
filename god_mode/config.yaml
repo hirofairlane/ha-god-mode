@@ -1,7 +1,7 @@
 ---
 name: GOD Mode
 slug: god_mode
-version: "0.4.3"
+version: "0.4.4"
 description: >-
   Centralized homelab control plane for Home Assistant. Aggregated
   monitoring of Linux hosts, Proxmox cluster (with auto-discovery of
@@ -65,7 +65,7 @@ options:
     - { name: openwrt_principal, addr: 192.168.0.1,   user: root,   category: openwrt }
     - { name: openwrt_sotano,    addr: 192.168.1.7,   user: root,   category: openwrt }
     - { name: openwrt_arriba,    addr: 192.168.1.8,   user: root,   category: openwrt }
-    - { name: openwrt_caseta,    addr: 192.168.1.3,   user: root,   category: openwrt }
+    - { name: openwrt_caseta,    addr: 192.168.1.3,   user: root,   category: openwrt, ssh_key_type: rsa }
 schema:
   poll_interval: int(15,3600)
   pve_sync_interval: int(60,3600)?
@@ -80,5 +80,6 @@ schema:
       chip: str?
       parent: str?
       mac: match(^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$)?
+      ssh_key_type: list(ed25519|rsa)?
       pve_token_id: str?
       pve_token_secret: password?
