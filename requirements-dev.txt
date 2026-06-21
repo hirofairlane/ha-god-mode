@@ -1,0 +1,8 @@
+# Dev/CI dependencies for the GOD Mode add-on QA loop.
+# Runtime code is stdlib-only except for `requests` and `pyyaml` (used by the
+# collector / pve-sync / yaml generator).
+pyyaml
+requests
+pytest
+pytest-cov
+ruff
