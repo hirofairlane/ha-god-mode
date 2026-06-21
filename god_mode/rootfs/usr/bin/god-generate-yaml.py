@@ -87,11 +87,11 @@ def gen_package(hosts):
         parent = h.get("parent", "")
         lines.append(f'      - name: "god_host_{name}_online"')
         lines.append(f"        unique_id: god_host_{name}_online_bin")
-        lines.append(f"        device_class: connectivity")
+        lines.append("        device_class: connectivity")
         lines.append(
             f"        state: \"{{{{ states('sensor.god_host_{name}_online_raw') == 'on' }}}}\""
         )
-        lines.append(f"        attributes:")
+        lines.append("        attributes:")
         lines.append(f'          category: "{cat}"')
         lines.append(f'          addr: "{addr}"')
         if parent:
@@ -189,7 +189,7 @@ def main():
     print(f"[gen] wrote {PKG_FILE} ({len(pkg)} bytes)")
     print(f"[gen] hosts: {len(hosts)}")
     print(f"[gen] sensors per host: {len(PER_HOST_METRICS) + 1} (4 metrics + online_raw)")
-    print(f"[gen] Lovelace dashboard generation DROPPED in v0.4.0 — UI lives in webui.")
+    print("[gen] Lovelace dashboard generation DROPPED in v0.4.0 — UI lives in webui.")
 
 
 if __name__ == "__main__":

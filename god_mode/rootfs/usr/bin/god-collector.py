@@ -16,6 +16,7 @@
 #  Stdlib only.
 # =====================================================================
 from __future__ import annotations
+
 import http.server
 import json
 import os
@@ -268,7 +269,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/history/"):
             # /api/history/<host>[?metric=cpu_pct,mem_pct]
-            from urllib.parse import urlparse, parse_qs
+            from urllib.parse import parse_qs, urlparse
             u = urlparse(self.path)
             host = u.path.split("/")[-1]
             qs = parse_qs(u.query)

@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # ── Static validation: YAML well-formed, Python compiles, versions in sync ──
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML
+        run: pip install pyyaml
+      - name: YAML + py_compile + version-sync checks
+        run: python tests/validate_repo.py
+
+  # ── Regression suite + code-quality gate (the "Sonar-lite" loop) ──
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install pyyaml requests pytest pytest-cov ruff
+      - name: Ruff (code quality)
+        run: ruff check .
+      - name: Pytest (regression) with coverage
+        env:
+          GODMODE_TESTING: "1"
+          GOD_DATA_DIR: "/tmp/godmode-data"
+        run: pytest tests/ -q --cov=god_mode --cov-report=term-missing
+
+  # ── Ansible playbooks + shipped YAML are well-formed (advisory: yamllint is
+  #    opinionated about cosmetics; ansible-lint flags best-practices that may
+  #    not apply to these small gather/power playbooks). ──
+  ansible-lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install linters
+        run: pip install ansible-lint yamllint
+      - name: yamllint (relaxed) on playbooks
+        run: yamllint -d relaxed god_mode/rootfs/usr/share/god-mode/ansible/
+      - name: ansible-lint on playbooks
+        run: ansible-lint god_mode/rootfs/usr/share/god-mode/ansible/playbooks/ || true
+
+  # ── Official Home Assistant add-on config linter (advisory: this 3rd-party
+  #    linter is opinionated and may flag legit local-build configs; it informs
+  #    but does not gate the build). ──
+  addon-lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Home Assistant add-on linter
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./god_mode"
+
+  # ── Full Docker build (native amd64) — validates the Dockerfile end to end,
+  #    including apk/pip deps and the rootfs copy. ──
+  build-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build add-on image (amd64)
+        run: |
+          docker build \
+            --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20 \
+            -t god-mode:ci god_mode

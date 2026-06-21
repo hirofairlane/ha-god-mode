@@ -1,0 +1,9 @@
+# Code-quality gate for the GOD Mode add-on.
+# Embedded SPA / template HTML lives inside god-webui.py as string literals;
+# we still lint the Python around it. No vendored/legacy trees to exclude yet.
+target-version = "py311"
+line-length = 120
+extend-exclude = ["_reference", "scripts"]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I"]  # pyflakes + import sorting + syntax

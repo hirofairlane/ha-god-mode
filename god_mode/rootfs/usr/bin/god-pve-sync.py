@@ -12,6 +12,7 @@ stdlib only. SSL certs of Proxmox are usually self-signed so we disable
 verification — this is a local LAN with API tokens, not a public CA.
 """
 from __future__ import annotations
+
 import json
 import os
 import ssl

@@ -11,14 +11,13 @@
 #  Stdlib only.
 # =====================================================================
 from __future__ import annotations
+
 import http.server
 import json
 import os
 import socketserver
 import subprocess
 import sys
-import threading
-import time
 import urllib.request
 from pathlib import Path
 
@@ -1060,7 +1059,7 @@ def onboard_host(payload: dict) -> tuple[int, str]:
 
     # Step 2: optional password bootstrap
     if password:
-        log_lines.append(f"\n=== ssh-copy-id (password bootstrap) ===")
+        log_lines.append("\n=== ssh-copy-id (password bootstrap) ===")
         ok, msg = ssh_copy_id_with_password(addr, user, port, password)
         log_lines.append(("✓ " if ok else "✗ ") + msg)
         # We deliberately discard the password here — it never reaches disk.
@@ -1128,7 +1127,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # /api/action/<name>[?limit=<host>]
         idx_action = p.rfind("/api/action/")
         if idx_action != -1:
-            from urllib.parse import urlparse, parse_qs
+            from urllib.parse import parse_qs, urlparse
             u = urlparse(p[idx_action + len("/api"):])  # rebuild "/action/<name>?..."
             action = u.path.split("/")[-1].strip()
             limit = parse_qs(u.query).get("limit", [None])[0]
