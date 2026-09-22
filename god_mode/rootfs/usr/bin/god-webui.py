@@ -27,6 +27,49 @@ INV_FILE    = DATA_DIR / "ansible" / "inventory.yml"
 CFG_FILE    = DATA_DIR / "ansible" / "ansible.cfg"
 OPTS_FILE   = DATA_DIR / "options.json"
 COLLECTOR_URL = "http://localhost:9876"
+
+# Registro de red: API que corre en la LXC 104 (ver INFRA/red-registro.md).
+# Vive fuera del addon a proposito — tiene las llaves SSH de los routers y
+# sobrevive a que Home Assistant este caido, que es justo cuando interesa saber
+# que hay conectado. Aqui solo se hace de proxy.
+#
+# Ambas opciones son OPCIONALES: sin ellas la vista avisa y el addon arranca
+# igual. Nada se rompe por no configurarlas.
+RED_API_URL_DEFAULT = "http://192.168.1.70:9877"
+
+
+def _red_api() -> tuple[str, str]:
+    """(url, token) del registro de red, leidos de las opciones del addon."""
+    try:
+        o = json.loads(OPTS_FILE.read_text())
+    except Exception:
+        o = {}
+    return (o.get("red_api_url") or RED_API_URL_DEFAULT).rstrip("/"), (o.get("red_api_token") or "")
+
+
+def proxy_red(path: str, method: str = "GET", cuerpo: bytes | None = None) -> tuple[int, bytes, str]:
+    """Proxy hacia el registro de red, anadiendo el token.
+
+    El token no viaja al navegador: lo pone el addon aqui. Asi la pagina no
+    tiene que conocerlo y no queda expuesto en el HTML ni en el historial.
+    """
+    url, token = _red_api()
+    req = urllib.request.Request(f"{url}{path}", data=cuerpo, method=method)
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    if cuerpo is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, r.read(), "application/json"
+    except urllib.error.HTTPError as e:
+        return e.code, e.read() or json.dumps({"error": str(e)}).encode(), "application/json"
+    except Exception as e:
+        return 502, json.dumps({
+            "error": str(e),
+            "pista": f"No responde {url}. Revisa red_api_url y red_api_token "
+                     f"en la configuracion del addon, y que red-api.service este activo en la LXC 104.",
+        }).encode(), "application/json"
 PLAYBOOKS = {
     "ping":                "/usr/share/god-mode/ansible/playbooks/ping.yml",
     "install_agent":       "/usr/share/god-mode/ansible/playbooks/install_agent.yml",
@@ -246,6 +289,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
     <a href="#proxmox" data-view="proxmox">Proxmox</a>
     <a href="#rpi" data-view="rpi">RPi</a>
     <a href="#openwrt" data-view="openwrt">OpenWrt</a>
+    <a href="#red" data-view="red">Red</a>
     <a href="#onboard" data-view="onboard">Onboard</a>
     <a href="#config" data-view="config">Config</a>
   </div>
@@ -344,6 +388,31 @@ INDEX_HTML = r"""<!DOCTYPE html>
   <div class="panel">
     <h2>Acciones</h2>
     <div id="host-actions"></div>
+  </div>
+</section>
+
+<!-- =================== RED =================== -->
+<section id="view-red" class="view">
+  <div class="panel">
+    <h2>Registro de red</h2>
+    <p class="muted" id="red-stats">cargando…</p>
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin:0.6rem 0">
+      <button onclick="redFiltro('sin_aprobar')">Sin aprobar</button>
+      <button onclick="redFiltro('vivos')">Vivos</button>
+      <button onclick="redFiltro('fantasmas')">Nunca vistos</button>
+      <button onclick="redFiltro('todo')">Todo</button>
+      <input id="red-buscar" placeholder="filtrar…" oninput="redPinta()"
+             style="flex:1;min-width:8rem">
+    </div>
+    <div style="overflow-x:auto">
+      <table id="red-tabla">
+        <thead><tr>
+          <th>IP</th><th>Nombre</th><th>Dónde</th><th>Descripción</th>
+          <th>Perfil</th><th>Estado</th><th>Acciones</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 </section>
 
@@ -561,6 +630,100 @@ function sparkline(points, w, h, color) {
 // ============================================================
 // Routing
 // ============================================================
+// ============================ REGISTRO DE RED ============================
+// Proxy a la API de la LXC 104. El token lo pone el addon del lado del
+// servidor (ver proxy_red), asi que aqui nunca aparece.
+let redDatos = [], redFiltroActual = 'sin_aprobar';
+
+async function cargarRed() {
+  $('red-stats').textContent = 'cargando…';
+  try {
+    const r = await fetch('api/red/dispositivos?filtro=' + redFiltroActual);
+    const d = await r.json();
+    if (!r.ok || d.error) {
+      $('red-stats').innerHTML = '<span class="ko">' + escapeHtml(d.error || 'error') + '</span>' +
+        (d.pista ? '<br><span class="muted">' + escapeHtml(d.pista) + '</span>' : '');
+      $('red-tabla').querySelector('tbody').innerHTML = '';
+      return;
+    }
+    redDatos = d.dispositivos || [];
+    const sinAprobar = redDatos.filter(x => x.estado !== 'aprobado').length;
+    $('red-stats').textContent = redDatos.length + ' aparatos · ' + sinAprobar + ' sin aprobar · filtro: ' + redFiltroActual;
+    redPinta();
+  } catch (e) {
+    $('red-stats').innerHTML = '<span class="ko">' + escapeHtml(String(e)) + '</span>';
+  }
+}
+
+function redFiltro(f) { redFiltroActual = f; cargarRed(); }
+
+function redPinta() {
+  const q = ($('red-buscar').value || '').toLowerCase();
+  const filas = redDatos.filter(x => !q ||
+    JSON.stringify(x).toLowerCase().includes(q));
+  $('red-tabla').querySelector('tbody').innerHTML = filas.map(x => {
+    const ip = x.ip_efectiva || x.ip || '—';
+    const donde = x.ap ? (x.ap + '/' + (x.ssid || '')) : (x.vivo ? 'cable' : '—');
+    const desc = x.descripcion || '<span class="muted">sin identificar</span>';
+    // El aviso de descripcion debil importa: "identificado por fabricante" no
+    // es lo mismo que identificado, y confundirlos es lo que deja pasar cosas.
+    const debil = (x.descripcion && !x.firme) ? ' <span class="muted" title="identificación débil: sólo repite el fabricante">~</span>' : '';
+    const res = x.tiene_reserva ? ('📌 ' + (x.ip_reservada || '')) : '';
+    const m = x.mac;
+    return '<tr>' +
+      '<td>' + escapeHtml(ip) + ' <span class="muted">' + escapeHtml(res) + '</span></td>' +
+      '<td>' + escapeHtml(x.nombre_efectivo || x.hostname || '—') + '</td>' +
+      '<td class="muted">' + escapeHtml(donde) + '</td>' +
+      '<td>' + desc + debil + '</td>' +
+      '<td>' + escapeHtml(x.perfil || '—') + '</td>' +
+      '<td>' + (x.estado === 'aprobado' ? '<span class="ok">aprobado</span>' : escapeHtml(x.estado || '')) + '</td>' +
+      '<td style="white-space:nowrap">' +
+        (x.estado === 'aprobado' ? '' : '<button onclick="redAccion(\'' + m + '\',{estado:\'aprobado\'})">✓</button> ') +
+        '<button onclick="redDescribir(\'' + m + '\')" title="describir">✎</button> ' +
+        '<button onclick="redPerfil(\'' + m + '\')" title="perfil">◈</button> ' +
+        '<button onclick="redReservar(\'' + m + '\',\'' + escapeHtml(ip) + '\')" title="reservar IP fija">📌</button>' +
+      '</td></tr>';
+  }).join('');
+}
+
+async function redAccion(mac, cuerpo) {
+  const r = await fetch('api/red/dispositivo/' + mac, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(cuerpo)
+  });
+  const d = await r.json();
+  if (!d.ok) alert('Error: ' + (d.mensaje || d.error || 'desconocido'));
+  cargarRed();
+}
+
+function redDescribir(mac) {
+  const x = redDatos.find(v => v.mac === mac) || {};
+  const t = prompt('Descripción del aparato:', x.descripcion || '');
+  if (t !== null) redAccion(mac, {descripcion: t});
+}
+
+function redPerfil(mac) {
+  const t = prompt('Perfil — pleno (internet), nube (depende del fabricante) o local (sin internet):', '');
+  if (t !== null && t !== '') redAccion(mac, {perfil: t.trim()});
+}
+
+async function redReservar(mac, ipActual) {
+  // Esto escribe una reserva estatica en el OpenWrt principal: es lo que evita
+  // que un aparato cambie de IP al renovar el DHCP.
+  const ip = prompt('Reservar IP fija para este aparato (escribe en el router):', ipActual !== '—' ? ipActual : '');
+  if (!ip) return;
+  const x = redDatos.find(v => v.mac === mac) || {};
+  const nombre = prompt('Nombre en el DHCP:', x.nombre_efectivo || x.hostname || '');
+  if (nombre === null) return;
+  const r = await fetch('api/red/reserva/' + mac, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ip: ip.trim(), nombre: nombre.trim()})
+  });
+  const d = await r.json();
+  alert(d.ok ? ('Reservada: ' + d.mensaje) : ('Error: ' + (d.mensaje || d.error)));
+  cargarRed();
+}
+
 function route() {
   const hash = location.hash.replace(/^#/, '') || 'overview';
   const parts = hash.split('/');
@@ -576,6 +739,7 @@ function route() {
   if (link) link.classList.add('active');
 
   // Trigger view-specific render
+  if (view === 'red') cargarRed();
   if (view === 'overview') renderOverview();
   else if (view === 'hosts') renderHosts();
   else if (view === 'proxmox') renderProxmox();
@@ -1582,6 +1746,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if "/api/" not in p:
             self._send(200, INDEX_HTML.replace("__GOD_VERSION__", VERSION))
             return
+        # /api/red/... va al registro de red, no al colector
+        idx_red = p.rfind("/api/red/")
+        if idx_red != -1:
+            code, body, ctype = proxy_red("/" + p[idx_red + len("/api/red/"):])
+            self._send(code, body, ctype)
+            return
         idx = p.rfind("/api/")
         sub = p[idx + 1:]
         api_path = "/" + sub
@@ -1590,6 +1760,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = self.path
+        # /api/red/... va al registro de red
+        idx_red = p.rfind("/api/red/")
+        if idx_red != -1:
+            n = int(self.headers.get("Content-Length") or 0)
+            code, body, ctype = proxy_red("/" + p[idx_red + len("/api/red/"):],
+                                          "POST", self.rfile.read(n) if n else b"{}")
+            self._send(code, body, ctype)
+            return
         # /api/pve_sync — force a one-shot Proxmox sync
         if p.rfind("/api/pve_sync") != -1:
             try:
