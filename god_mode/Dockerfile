@@ -44,14 +44,18 @@ RUN find /etc/s6-overlay/s6-rc.d \( -name "up" -o -name "run" \) -type f -exec c
         /usr/bin/god-deploy-packages.sh \
         /usr/bin/god-generate-yaml.py \
         /usr/bin/god-collector-runner.sh \
-        /usr/bin/god-webui-runner.sh
+        /usr/bin/god-webui-runner.sh \
+        /usr/bin/god-discover.py \
+        /usr/bin/god-updates.py \
+        /usr/bin/god-audit.py \
+        /usr/bin/god_cached_runner.py
 
 LABEL \
     io.hass.name="GOD Mode" \
     io.hass.description="Centralized homelab monitoring (Linux + Proxmox)" \
     io.hass.arch="amd64|aarch64" \
     io.hass.type="addon" \
-    io.hass.version="0.4.4" \
+    io.hass.version="0.4.8" \
     maintainer="Sergio (hirofairlane)"
 
 EXPOSE 8099 9876

@@ -55,7 +55,11 @@ mem_used_mb=$((mem_used / 1024))
 # Disk (root only, busybox df doesn't grok --type)
 disk_root=$(df -P / 2>/dev/null | awk 'NR==2{gsub("%","",$5); print $5}')
 [ -z "$disk_root" ] && disk_root=0
-disk_max=$(df -P 2>/dev/null | awk 'NR>1 && $1 !~ /(tmpfs|devtmpfs|squashfs|overlay)/ {gsub("%","",$5); if($5+0>m)m=$5+0} END{print m+0}')
+# disk_max = fullest *writable* fs. On OpenWrt the squashfs ROM mounts as
+# device /dev/root on /rom and is always 100% read-only by design, so the
+# squashfs/ device-name filter below misses it. Exclude the /rom mountpoint
+# ($6) explicitly so the real writable /overlay usage wins instead.
+disk_max=$(df -P 2>/dev/null | awk 'NR>1 && $6 != "/rom" && $1 !~ /(tmpfs|devtmpfs|squashfs|overlay)/ {gsub("%","",$5); if($5+0>m)m=$5+0} END{print m+0}')
 [ -z "$disk_max" ] && disk_max=0
 
 # Temperature (best effort, OpenWrt thermal_zone normally absent)

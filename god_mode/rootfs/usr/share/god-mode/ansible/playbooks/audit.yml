@@ -1,0 +1,169 @@
+---
+# =====================================================================
+#  audit.yml — operational health audit for a single host.
+#
+#  Triggered by `god-audit.py` on demand. Captures things you'd notice
+#  in a manual spot-check: uptime, disk usage, failed services, reboot
+#  required, recent kernel/journal errors. Designed to give the LLM
+#  enough context to recommend specific actions.
+#
+#  Writes /data/cache/audit/<host>.raw.json on the controller.
+# =====================================================================
+- name: GOD Mode audit
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  strategy: free
+  vars:
+    cache_dir: /data/cache/audit
+    metadata_dir: /data/metadata
+  tasks:
+    - name: Ensure cache dir exists (controller)
+      ansible.builtin.file:
+        path: "{{ cache_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Read OS metadata (if present)
+      ansible.builtin.set_fact:
+        meta: "{{ (lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') or '{}') | from_json }}"
+
+    - name: Skip hosts with unknown OS
+      ansible.builtin.meta: end_host
+      when: meta.god_os is not defined or meta.god_os == 'unknown'
+
+    # --- POSIX audit -----------------------------------------------------
+    # Each section emits a `BEGIN <name>` … `END <name>` block so the
+    # Python wrapper can parse sections independently.
+    - name: Run POSIX audit probes
+      ansible.builtin.raw: |
+        set +e
+        echo "BEGIN uptime"
+        uptime -p 2>/dev/null || uptime
+        echo "END uptime"
+        echo "BEGIN uptime_s"
+        cat /proc/uptime 2>/dev/null | awk '{print int($1)}' || echo 0
+        echo "END uptime_s"
+        echo "BEGIN disk"
+        df -PT 2>/dev/null | grep -vE '^(tmpfs|devtmpfs|overlay|squashfs|udev)' | tail -n +2
+        echo "END disk"
+        echo "BEGIN reboot_required"
+        if [ -f /var/run/reboot-required ]; then
+          echo YES
+          cat /var/run/reboot-required.pkgs 2>/dev/null | head -20
+        elif command -v needs-restarting >/dev/null 2>&1; then
+          needs-restarting -r 2>/dev/null | head -5
+        else
+          # Compare running kernel vs latest installed kernel image
+          RUNNING=$(uname -r)
+          LATEST=$(ls -1 /boot/vmlinuz-* 2>/dev/null | sort -V | tail -1 | sed 's|.*vmlinuz-||')
+          if [ -n "$LATEST" ] && [ "$RUNNING" != "$LATEST" ]; then
+            echo "YES (running=$RUNNING latest=$LATEST)"
+          else
+            echo "no"
+          fi
+        fi
+        echo "END reboot_required"
+        echo "BEGIN services_failed"
+        if command -v systemctl >/dev/null 2>&1; then
+          systemctl --failed --no-legend --plain --no-pager 2>/dev/null | head -30
+        else
+          echo "(no systemctl)"
+        fi
+        echo "END services_failed"
+        echo "BEGIN journal_errors"
+        if command -v journalctl >/dev/null 2>&1; then
+          # Last 100 priority-error log lines, deduplicated
+          journalctl -p err -n 100 --no-pager --since "24 hours ago" 2>/dev/null | tail -50
+        elif [ -f /var/log/messages ]; then
+          grep -iE 'error|fail|panic' /var/log/messages 2>/dev/null | tail -30
+        else
+          echo "(no journal/messages)"
+        fi
+        echo "END journal_errors"
+        echo "BEGIN docker"
+        if command -v docker >/dev/null 2>&1; then
+          docker ps -a --format '{{ "{{.Names}} {{.Status}} {{.Image}}" }}' 2>/dev/null | head -50
+        else
+          echo "(no docker)"
+        fi
+        echo "END docker"
+        echo "BEGIN load"
+        cat /proc/loadavg 2>/dev/null || echo "(no /proc/loadavg)"
+        echo "END load"
+        echo "BEGIN mem"
+        free -m 2>/dev/null | head -3 || cat /proc/meminfo 2>/dev/null | head -5
+        echo "END mem"
+        echo "BEGIN smart"
+        if command -v smartctl >/dev/null 2>&1; then
+          for d in /dev/sd? /dev/nvme?n? /dev/mmcblk?; do
+            [ -b "$d" ] || continue
+            echo "--- $d ---"
+            smartctl -H "$d" 2>/dev/null | grep -E 'overall-health|SMART Health'
+            smartctl -A "$d" 2>/dev/null | grep -E 'Temperature|Reallocated|Pending|Power_On' | head -6
+          done
+        else
+          echo "(no smartctl)"
+        fi
+        echo "END smart"
+      register: posix_audit
+      changed_when: false
+      failed_when: false
+      timeout: 60
+      when: meta.god_os in ['linux','busybox','macos']
+
+    # --- Windows audit ---------------------------------------------------
+    - name: Run Windows audit probes
+      ansible.builtin.raw: |
+        powershell -NoProfile -Command "
+          \$ErrorActionPreference='SilentlyContinue';
+          Write-Output 'BEGIN uptime';
+          (Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime | Select-Object -ExpandProperty TotalHours;
+          Write-Output 'END uptime';
+          Write-Output 'BEGIN disk';
+          Get-PSDrive -PSProvider FileSystem | ForEach-Object { \$_.Name, \$_.Used, \$_.Free -join ' ' };
+          Write-Output 'END disk';
+          Write-Output 'BEGIN reboot_required';
+          if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') { 'YES' } else { 'no' };
+          Write-Output 'END reboot_required';
+          Write-Output 'BEGIN services_failed';
+          Get-Service | Where-Object { \$_.StartType -eq 'Automatic' -and \$_.Status -ne 'Running' } | Select-Object -First 20 | Format-Table Name,Status -AutoSize | Out-String;
+          Write-Output 'END services_failed';
+          Write-Output 'BEGIN journal_errors';
+          Get-EventLog -LogName System -EntryType Error -Newest 30 | Format-Table TimeGenerated,Source,Message -AutoSize | Out-String;
+          Write-Output 'END journal_errors';
+        "
+      register: win_audit
+      changed_when: false
+      failed_when: false
+      timeout: 60
+      when: meta.god_os == 'windows'
+
+    # --- Persist to controller -------------------------------------------
+    - name: Pick the relevant stdout
+      ansible.builtin.set_fact:
+        audit_raw: >-
+          {%- if meta.god_os == 'windows' -%}
+            {{ win_audit.stdout | default('') }}
+          {%- else -%}
+            {{ posix_audit.stdout | default('') }}
+          {%- endif -%}
+
+    - name: Write raw audit payload to controller cache
+      ansible.builtin.copy:
+        dest: "{{ cache_dir }}/{{ inventory_hostname }}.raw.json"
+        content: |
+          {
+            "host": "{{ inventory_hostname }}",
+            "god_os": "{{ meta.god_os | default('unknown') }}",
+            "fetched_at_unix": {{ ansible_date_time.epoch | default(lookup('pipe', 'date +%s')) }},
+            "raw": {{ audit_raw | to_json }}
+          }
+        mode: "0644"
+      delegate_to: localhost
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} audit raw payload written ({{ (audit_raw | length) }} bytes)"

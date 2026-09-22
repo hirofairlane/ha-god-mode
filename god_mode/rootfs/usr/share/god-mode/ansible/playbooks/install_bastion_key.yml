@@ -1,0 +1,126 @@
+---
+# =====================================================================
+#  install_bastion_key.yml - propagate the LXC 104 (bastion) pubkey to
+#  ~/.ssh/authorized_keys of every managed host.
+#
+#  Rationale: LXC 104 is the common control plane. Both Sergio (from his
+#  laptop, via `ssh jarvis`) and Jarvis (running inside the LXC) drive
+#  the homelab from there. To avoid propagating Sergio's personal key
+#  to every host, we propagate ONLY the LXC's pubkey, and Sergio reaches
+#  hosts as `ssh jarvis 'ssh <host> ...'`.
+#
+#  GOD Mode addon keeps its own keypair (god-mode@local-god-mode) — this
+#  playbook adds the bastion pubkey ALONGSIDE, it does not replace.
+#
+#  The pubkey content lives at /data/secrets/bastion.pub on the addon
+#  filesystem. Sync workflow: scp/cat from LXC 104, write to that path.
+#  Re-running the playbook is idempotent.
+#
+#  Triggered by:
+#    - Web UI button "Install bastion key on all"
+#    - Onboard chain (so any new host gets it automatically)
+#    - Manual: ansible-playbook install_bastion_key.yml --limit <host>
+# =====================================================================
+- name: GOD Mode install_bastion_key
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  strategy: free
+  vars:
+    bastion_pubkey_path: /data/secrets/bastion.pub
+    metadata_dir: /data/metadata
+  tasks:
+    - name: Read detect_os metadata (if present)
+      # `lookup(..., errors='ignore')` returns None (not undefined) on a
+      # missing file, so `| default('{}')` doesn't catch it. The `or '{}'`
+      # coerces None → '{}' before from_json. Robust against the case
+      # where this playbook runs before detect_os has populated metadata.
+      ansible.builtin.set_fact:
+        meta: "{{ (lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') or '{}') | from_json }}"
+
+    - name: Inline detect when metadata absent
+      ansible.builtin.raw: uname -a 2>/dev/null || powershell -NoProfile -Command "$PSVersionTable.PSVersion.Major"
+      register: probe
+      changed_when: false
+      failed_when: false
+      when: meta.god_os is not defined
+
+    - name: Classify when metadata absent
+      ansible.builtin.set_fact:
+        meta:
+          god_os: >-
+            {%- if probe.stdout is defined and 'Darwin' in probe.stdout -%}macos
+            {%- elif probe.stdout is defined and probe.stdout | trim | length > 0 and probe.stdout | regex_search('^[0-9]+$') -%}windows
+            {%- elif probe.stdout is defined and 'Linux' in probe.stdout -%}{% if 'OpenWrt' in probe.stdout %}busybox{% else %}linux{% endif %}
+            {%- else -%}unknown
+            {%- endif -%}
+      when: meta.god_os is not defined
+
+    - name: Fail fast if bastion.pub is missing on the addon
+      ansible.builtin.stat:
+        path: "{{ bastion_pubkey_path }}"
+      register: bastion_stat
+      delegate_to: localhost
+
+    - name: Abort host if bastion.pub absent
+      ansible.builtin.debug:
+        msg: "SKIP {{ inventory_hostname }}: {{ bastion_pubkey_path }} not present on addon. Run: docker exec addon_local_god_mode sh -c 'mkdir -p /data/secrets && echo \"<pubkey>\" > /data/secrets/bastion.pub'"
+      when: not bastion_stat.stat.exists
+
+    # --- POSIX hosts (linux/macos) ---------------------------------------
+    - name: Propagate bastion pubkey (POSIX)
+      ansible.builtin.raw: |
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        touch ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/authorized_keys
+        grep -qF "{{ lookup('file', bastion_pubkey_path) | trim }}" ~/.ssh/authorized_keys || \
+          echo "{{ lookup('file', bastion_pubkey_path) | trim }}" >> ~/.ssh/authorized_keys
+      changed_when: false
+      failed_when: false
+      when:
+        - bastion_stat.stat.exists
+        - meta.god_os in ['linux','macos']
+
+    # --- OpenWrt dropbear ------------------------------------------------
+    - name: Propagate bastion pubkey (OpenWrt dropbear)
+      ansible.builtin.raw: |
+        mkdir -p /etc/dropbear
+        chmod 700 /etc/dropbear
+        touch /etc/dropbear/authorized_keys
+        grep -qF "{{ lookup('file', bastion_pubkey_path) | trim }}" /etc/dropbear/authorized_keys || \
+          echo "{{ lookup('file', bastion_pubkey_path) | trim }}" >> /etc/dropbear/authorized_keys
+      changed_when: false
+      failed_when: false
+      when:
+        - bastion_stat.stat.exists
+        - meta.god_os == 'busybox'
+
+    # --- Windows ---------------------------------------------------------
+    - name: Propagate bastion pubkey (Windows authorized_keys)
+      ansible.builtin.raw: |
+        powershell -NoProfile -Command "
+          $ErrorActionPreference='Stop';
+          $key = '{{ lookup('file', bastion_pubkey_path) | trim }}';
+          $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);
+          if ($isAdmin) {
+            $path='C:\ProgramData\ssh\administrators_authorized_keys';
+            New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null;
+          } else {
+            $path = Join-Path $HOME '.ssh\authorized_keys';
+            New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null;
+          }
+          if (-not (Test-Path $path) -or -not (Select-String -Path $path -Pattern ([regex]::Escape($key)) -Quiet)) {
+            Add-Content -Path $path -Value $key;
+          }
+        "
+      changed_when: false
+      failed_when: false
+      when:
+        - bastion_stat.stat.exists
+        - meta.god_os == 'windows'
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: bastion pubkey propagation attempted ({{ meta.god_os }})"
+      when: bastion_stat.stat.exists

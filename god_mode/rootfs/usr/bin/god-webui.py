@@ -28,11 +28,13 @@ CFG_FILE    = DATA_DIR / "ansible" / "ansible.cfg"
 OPTS_FILE   = DATA_DIR / "options.json"
 COLLECTOR_URL = "http://localhost:9876"
 PLAYBOOKS = {
-    "ping":          "/usr/share/god-mode/ansible/playbooks/ping.yml",
-    "install_agent": "/usr/share/god-mode/ansible/playbooks/install_agent.yml",
-    "gather":        "/usr/share/god-mode/ansible/playbooks/gather.yml",
-    "power":         "/usr/share/god-mode/ansible/playbooks/power.yml",
-    "detect_os":     "/usr/share/god-mode/ansible/playbooks/detect_os.yml",
+    "ping":                "/usr/share/god-mode/ansible/playbooks/ping.yml",
+    "install_agent":       "/usr/share/god-mode/ansible/playbooks/install_agent.yml",
+    "uninstall_agent":     "/usr/share/god-mode/ansible/playbooks/uninstall_agent.yml",
+    "install_bastion_key": "/usr/share/god-mode/ansible/playbooks/install_bastion_key.yml",
+    "gather":              "/usr/share/god-mode/ansible/playbooks/gather.yml",
+    "power":               "/usr/share/god-mode/ansible/playbooks/power.yml",
+    "detect_os":           "/usr/share/god-mode/ansible/playbooks/detect_os.yml",
 }
 BOOTSTRAP_SCRIPT = "/usr/bin/god-bootstrap.sh"
 PVE_SYNC_SCRIPT = "/usr/bin/god-pve-sync.py"
@@ -55,6 +57,54 @@ CHIP_ICONS = {
 }
 
 PORT = 8099
+VERSION = os.environ.get("GOD_VERSION", "dev")
+SUPERVISOR_URL = "http://supervisor"
+SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
+
+
+def sync_options_to_supervisor() -> tuple[bool, str]:
+    """POST the current /data/options.json to the Supervisor so its cached
+    view of the addon's options matches the on-disk file.
+
+    Why: bashio::config (and any future addon restart triggered by the
+    Supervisor) reads options from the Supervisor, NOT from the file we
+    wrote. Without this sync, an addon restart will overwrite our
+    options.json with the stale Supervisor view, losing onboard/delete
+    operations done via the API.
+
+    Best-effort: on failure, logs and continues. The bootstrap script
+    now reads /data/options.json directly via jq, so this sync only
+    protects against future restarts — operation continues fine in the
+    meantime.
+    """
+    if not SUPERVISOR_TOKEN:
+        return False, "SUPERVISOR_TOKEN not set in env (running outside HA?)"
+    try:
+        full = json.loads(OPTS_FILE.read_text())
+    except Exception as e:
+        return False, f"can't read {OPTS_FILE}: {e}"
+    # Preserve only the keys defined in config.yaml schema; sending unknown
+    # keys would make the Supervisor reject the whole payload.
+    SCHEMA_KEYS = ("poll_interval", "pve_sync_interval", "ssh_user",
+                   "install_packages", "pve", "hosts")
+    payload = {k: full[k] for k in SCHEMA_KEYS if k in full}
+    req = urllib.request.Request(
+        f"{SUPERVISOR_URL}/addons/self/options",
+        data=json.dumps({"options": payload}).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = resp.read().decode("utf-8", "replace")[:300]
+            if resp.status == 200:
+                return True, f"Supervisor sync OK ({resp.status})"
+            return False, f"Supervisor sync HTTP {resp.status}: {body}"
+    except Exception as e:
+        return False, f"Supervisor sync exception: {e}"
 
 
 INDEX_HTML = r"""<!DOCTYPE html>
@@ -161,6 +211,30 @@ INDEX_HTML = r"""<!DOCTYPE html>
   #log { max-height:400px; overflow:auto; font-size:0.8rem; }
   .pill { display:inline-block; padding:0.05rem 0.4rem; border-radius:10px;
           font-size:0.7rem; background:var(--panel2); border:1px solid var(--border); }
+
+  /* Action log dock — fixed bottom, visible across every view */
+  #dock { position:fixed; left:0; right:0; bottom:0; z-index:50;
+          background:var(--panel); border-top:2px solid var(--border);
+          transition:transform 0.18s ease; transform:translateY(calc(100% - 38px)); }
+  #dock.open { transform:translateY(0); }
+  #dock .dock-header {
+    display:flex; align-items:center; gap:0.6rem; padding:0.4rem 0.8rem;
+    cursor:pointer; user-select:none; height:38px; box-sizing:border-box;
+    border-bottom:1px solid var(--border); background:var(--panel2);
+  }
+  #dock .dock-header b { color:var(--accent); }
+  #dock .dock-header .spacer { flex:1; }
+  #dock .dock-body { max-height:40vh; overflow:auto; padding:0.4rem 0.8rem; }
+  #dock-log { margin:0; font-size:0.8rem; white-space:pre-wrap; word-break:break-all;
+              background:transparent; border:none; padding:0; }
+  #dock-status { font-size:0.75rem; padding:0.1rem 0.5rem; border-radius:10px; }
+  #dock-status.idle    { background:#2d333b; color:var(--muted); }
+  #dock-status.running { background:var(--accent); color:#000; animation:pulse 1.2s infinite; }
+  #dock-status.done    { background:var(--ok);   color:#000; }
+  #dock-status.error   { background:var(--ko);   color:#fff; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+  /* leave room at the bottom of main so the collapsed dock doesn't cover content */
+  main { padding-bottom:60px; }
 </style>
 </head><body>
 
@@ -175,7 +249,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
     <a href="#onboard" data-view="onboard">Onboard</a>
     <a href="#config" data-view="config">Config</a>
   </div>
-  <span class="meta">v0.4.0 · <span id="last-poll">…</span></span>
+  <span class="meta">v__GOD_VERSION__ · <span id="last-poll">…</span></span>
 </nav>
 
 <main>
@@ -297,14 +371,17 @@ INDEX_HTML = r"""<!DOCTYPE html>
         <div><label>Parent pve_node (opcional)</label><input id="o-parent" placeholder="zeratul"></div>
         <div><label>Password (one-time, no persiste)</label><input id="o-pass" type="password" placeholder="vacío si pubkey ya está"></div>
       </div>
+      <div style="margin-top:8px;">
+        <label style="font-weight:normal;">
+          <input id="o-force" type="checkbox">
+          overwrite if host already exists (merge fields + re-run provisioning)
+        </label>
+      </div>
       <button type="submit">➕ Add host</button>
       <span id="onboard-status" class="muted"></span>
     </form>
   </div>
-  <div class="panel">
-    <h2>Action log</h2>
-    <pre id="log">(sin acciones aún)</pre>
-  </div>
+  <p class="muted" style="font-size:0.8rem;">El resultado se muestra en el panel <b>Action log</b> fijo en la parte inferior de la pantalla (visible desde cualquier vista).</p>
 </section>
 
 <!-- =================== CONFIG =================== -->
@@ -339,9 +416,11 @@ INDEX_HTML = r"""<!DOCTYPE html>
             title="Fuerza un poll inmediato de métricas de todos los hosts. Normalmente el collector lo hace cada poll_interval (default 60s).">🔬 Gather now</button>
     <button class="secondary" onclick="actionPlaybook('ping', null, 'global-out')"
             title="Ansible ping a todos los hosts. Diagnóstico rápido de conectividad SSH.">📡 Ping all</button>
+    <button class="secondary" onclick="actionPlaybook('install_bastion_key', null, 'global-out')"
+            title="Propaga la pubkey del bastión (LXC 104, /data/secrets/bastion.pub) a authorized_keys de TODOS los hosts. Idempotente. Permite que Sergio y Jarvis lleguen a cualquier host a través del LXC 104 sin propagar claves personales.">🔑 Install bastion key on ALL</button>
     <button class="secondary" onclick="pveSyncNow('global-out')"
             title="Lanza ya un god-pve-sync que consulta la API de cada pve_node con token configurado y refresca la lista de VMs/LXCs. Normalmente corre cada pve_sync_interval (default 5 min).">🔄 PVE sync now</button>
-    <pre id="global-out" style="margin-top:0.6rem; max-height:400px; overflow:auto;">(sin acción ejecutada)</pre>
+    <p class="muted" style="font-size:0.8rem; margin-top:0.5rem;">Resultado en el panel <b>Action log</b> abajo (siempre visible).</p>
   </div>
   <div class="panel">
     <h2>Inventory (Ansible)</h2>
@@ -350,6 +429,22 @@ INDEX_HTML = r"""<!DOCTYPE html>
 </section>
 
 </main>
+
+<!-- =================== ACTION LOG DOCK (fixed bottom) =================== -->
+<div id="dock">
+  <div class="dock-header" onclick="toggleLogDock()">
+    <b>Action log</b>
+    <span id="dock-status" class="idle">idle</span>
+    <span class="spacer"></span>
+    <span class="muted" id="dock-hint">click para abrir/cerrar</span>
+    <button class="secondary" style="margin:0; padding:0.15rem 0.5rem;"
+            onclick="event.stopPropagation(); clearLog()">clear</button>
+    <span id="dock-toggle" style="font-size:1.1rem;">▲</span>
+  </div>
+  <div class="dock-body">
+    <pre id="log">(sin acciones aún)</pre>
+  </div>
+</div>
 
 <script>
 // ============================================================
@@ -368,6 +463,41 @@ const state = {
 // Helpers
 // ============================================================
 function $(id) { return document.getElementById(id); }
+
+// ============================================================
+// Action log dock helpers — fixed bottom panel visible everywhere
+// ============================================================
+function expandLog()    { $('dock').classList.add('open'); $('dock-toggle').textContent='▼'; }
+function collapseLog()  { $('dock').classList.remove('open'); $('dock-toggle').textContent='▲'; }
+function toggleLogDock() { $('dock').classList.contains('open') ? collapseLog() : expandLog(); }
+function clearLog() { setLog('(sin acciones aún)'); setLogStatus('idle','idle'); }
+function setLogStatus(label, cls) {
+  const s = $('dock-status');
+  s.textContent = label;
+  s.className = cls || 'idle';
+}
+function _scrollLogBottom() {
+  const body = document.querySelector('#dock .dock-body');
+  if (body) body.scrollTop = body.scrollHeight;
+}
+function setLog(text)    { $('log').textContent = text; _scrollLogBottom(); }
+function appendLog(text) { $('log').textContent += text; _scrollLogBottom(); }
+// Wrap any async unit of work so the dock auto-opens, shows running, and
+// flips to done/error at the end. fn(setLog, appendLog) receives both
+// writers; returning false from fn skips the auto "done" flip (useful when
+// you want to set a more specific status yourself).
+async function runWithLog(label, fn) {
+  expandLog();
+  setLogStatus('running', 'running');
+  setLog(`Running ${label}…\n`);
+  try {
+    const ret = await fn(setLog, appendLog);
+    if (ret !== false) setLogStatus('done', 'done');
+  } catch (e) {
+    setLogStatus('error', 'error');
+    appendLog('\nERROR: ' + e);
+  }
+}
 function fmtBytes(b) {
   if (b == null || b === 0) return '-';
   const u = ['B','K','M','G','T','P']; let i=0, v=b;
@@ -611,7 +741,43 @@ function attachSortHandlers() {
 function renderProxmox() {
   const nodes = Object.keys(state.pve).sort();
   if (nodes.length === 0) {
-    $('pve-container').innerHTML = '<p class="muted">No hay pve_node con token configurado. Pon <code>pve_token_id</code> + <code>pve_token_secret</code> en las opciones del addon, por cada nodo.</p>';
+    // Fallback: list pve_nodes from inventory and explain WHY each one
+    // isn't being polled (typically a missing pve_token_secret).
+    const invNodes = Object.entries(state.hosts)
+      .filter(([n,m]) => m._category === 'pve_node')
+      .sort((a,b) => a[0].localeCompare(b[0]));
+    if (invNodes.length === 0) {
+      $('pve-container').innerHTML = '<p class="muted">No hay <code>pve_node</code> en el inventario. Onboardea uno con categoría <code>pve_node</code>.</p>';
+      return;
+    }
+    let html = `<div class="panel">
+      <h2>Proxmox sync no configurado</h2>
+      <p class="muted">El collector tiene <code>pve_token_id</code> pero falta el secret. Sin el secret, no se puede consultar la API de Proxmox para listar VMs/CTs por nodo.</p>
+      <table>
+        <thead><tr><th>node</th><th>IP</th><th>token id</th><th>secret</th><th>fix</th></tr></thead>
+        <tbody>`;
+    invNodes.forEach(([n,m]) => {
+      const tokenOk = m._pve_token_configured;
+      const tokenId = m._pve_token_id || '(none)';
+      const fix = tokenOk
+        ? '<span class="ok">configurado — espera al próximo pve-sync (5 min) o pulsa "PVE sync now" abajo</span>'
+        : `<a href="#config">Configuration tab</a> → host <code>${n}</code> → <code>pve_token_secret: "&lt;UUID&gt;"</code>`;
+      html += `<tr>
+        <td><b>${escapeHtml(n)}</b></td>
+        <td class="muted">${escapeHtml(m.addr || '?')}</td>
+        <td><code>${escapeHtml(tokenId)}</code></td>
+        <td class="${tokenOk ? 'ok' : 'ko'}">${tokenOk ? '✓ set' : '✗ empty'}</td>
+        <td style="font-size:0.85rem;">${fix}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>
+      <p class="muted" style="font-size:0.8rem; margin-top:0.7rem;">
+        Para obtener el UUID: en Proxmox UI → Datacenter → Permissions → API Tokens →
+        seleccionar <code>god@pve!godmode</code> → ver el secreto (solo se muestra una vez al crearlo).
+        Si lo perdiste, créalo de nuevo con role <code>PVEAuditor</code>.
+      </p>
+    </div>`;
+    $('pve-container').innerHTML = html;
     return;
   }
   let html = '';
@@ -658,9 +824,15 @@ function renderCategoryView(catName, containerId) {
     $(containerId).innerHTML = `<p class="muted">Ningún host con categoría <code>${catName}</code>.</p>`;
     return;
   }
-  let html = `<table>
-    <thead><tr><th>host</th><th>chip</th><th>status</th><th>cpu%</th><th>mem%</th><th>disk%</th><th>temp</th><th>uptime</th><th>last</th></tr></thead>
-    <tbody>`;
+  // VMs/CTs run inside a host whose temp is reported separately; OpenWrt
+  // routers DO have a CPU temp sensor (visible in their gauge spec).
+  const showTemp = !['pve_vm','pve_lxc'].includes(catName);
+  let html = `<table><thead><tr>
+    <th>host</th><th>chip</th><th>status</th>
+    <th>cpu%</th><th>mem%</th><th>disk%</th>
+    ${showTemp ? '<th>temp</th>' : ''}
+    <th>uptime</th><th>last</th>
+  </tr></thead><tbody>`;
   rows.forEach(([n,m]) => {
     html += `<tr class="clickable" onclick="location.hash='host/${n}'">
       <td><b>${escapeHtml(n)}</b><div class="muted" style="font-size:0.7rem">${escapeHtml(m.addr||'')}</div></td>
@@ -669,7 +841,7 @@ function renderCategoryView(catName, containerId) {
       <td class="${valueClass(m.cpu_pct,80,95)}">${m.cpu_pct ?? '-'}</td>
       <td class="${valueClass(m.mem_pct,85,95)}">${m.mem_pct ?? '-'}</td>
       <td class="${valueClass(m.disk_max_pct,85,95)}">${m.disk_max_pct ?? '-'}</td>
-      <td class="${valueClass(m.temp_max_c,75,85)}">${m.temp_max_c ?? '-'}</td>
+      ${showTemp ? `<td class="${valueClass(m.temp_max_c,75,85)}">${m.temp_max_c ?? '-'}</td>` : ''}
       <td>${fmtUptime(m.uptime_s)}</td>
       <td class="muted">${fmtAge(m._polled_at)}</td>
     </tr>`;
@@ -702,20 +874,53 @@ async function renderHostDetail(name) {
   metaParts.push(`updates: ${m.updates_pending ?? '?'}`);
   metaParts.push(`SMART: ${escapeHtml(m.smart_health || '-')}`);
   metaParts.push(`status: ${statusCell(m)}`);
+  // Some metadata fields are nonsensical for VMs/CTs/network gear — strip
+  // them from the meta line before painting it.
+  const cat = m._category || '';
+  const isVirtual = cat === 'pve_vm' || cat === 'pve_lxc';
+  const isNetGear = cat === 'openwrt';
+  if (isVirtual || isNetGear) {
+    metaParts = metaParts.filter(p => !p.startsWith('SMART:'));
+  }
   $('host-meta').innerHTML = metaParts.join(' · ');
 
-  // Gauges
-  const gauges = [
-    ['CPU', m.cpu_pct, '%', 80, 95],
-    ['RAM', m.mem_pct, '%', 85, 95],
-    ['Swap', m.swap_pct, '%', 50, 80],
-    ['Disk', m.disk_max_pct, '%', 85, 95],
-    ['Temp', m.temp_max_c, '°C', 75, 85],
-    ['SMART temp', m.smart_temp_max, '°C', 55, 65],
-    ['Load 1m', m.load_1m, '', 999, 9999],
-    ['Updates', m.updates_pending, '', 999, 9999],
-  ];
-  $('host-gauges').innerHTML = gauges.map(([lbl,v,u,w,c]) => `
+  // Gauges — pick the set that's meaningful for this host's category.
+  // VMs/LXCs have no temperature, SMART, or swap (well, swap can exist
+  // inside a VM but it's noise here); OpenWrt routers don't expose temp
+  // or SMART either. Showing them as '-' clutters the dashboard.
+  let gaugeSpec;
+  if (isVirtual) {
+    gaugeSpec = [
+      ['CPU',     m.cpu_pct,         '%', 80, 95],
+      ['RAM',     m.mem_pct,         '%', 85, 95],
+      ['Disk',    m.disk_max_pct,    '%', 85, 95],
+      ['Load 1m', m.load_1m,         '',  999, 9999],
+      ['Updates', m.updates_pending, '',  999, 9999],
+    ];
+  } else if (isNetGear) {
+    // OpenWrt DOES report CPU temp (busybox agent reads /sys/class/thermal).
+    // What it lacks: SMART data + swap.
+    gaugeSpec = [
+      ['CPU',     m.cpu_pct,         '%',  80, 95],
+      ['RAM',     m.mem_pct,         '%',  85, 95],
+      ['Disk',    m.disk_max_pct,    '%',  85, 95],
+      ['Temp',    m.temp_max_c,      '°C', 75, 85],
+      ['Load 1m', m.load_1m,         '',   999, 9999],
+    ];
+  } else {
+    // Physical hardware: full set
+    gaugeSpec = [
+      ['CPU',        m.cpu_pct,         '%',  80, 95],
+      ['RAM',        m.mem_pct,         '%',  85, 95],
+      ['Swap',       m.swap_pct,        '%',  50, 80],
+      ['Disk',       m.disk_max_pct,    '%',  85, 95],
+      ['Temp',       m.temp_max_c,      '°C', 75, 85],
+      ['SMART temp', m.smart_temp_max,  '°C', 55, 65],
+      ['Load 1m',    m.load_1m,         '',   999, 9999],
+      ['Updates',    m.updates_pending, '',   999, 9999],
+    ];
+  }
+  $('host-gauges').innerHTML = gaugeSpec.map(([lbl,v,u,w,c]) => `
     <div class="gauge">
       <div class="label">${lbl}</div>
       <div class="value ${valueClass(v,w,c)}">${v ?? '-'}${v!=null?u:''}</div>
@@ -731,8 +936,14 @@ async function renderHostDetail(name) {
                      disk_max_pct:'#a371f7', temp_max_c:'#ff7b72' };
     const labels = { cpu_pct:'CPU %', mem_pct:'RAM %', swap_pct:'Swap %',
                      disk_max_pct:'Disk %', temp_max_c:'Temp °C' };
+    // VMs/CTs: skip swap+temp (noise inside a virtualized guest).
+    // OpenWrt: skip swap (none) but keep temp (CPU sensor present).
+    let chartKeys;
+    if (isVirtual)      chartKeys = ['cpu_pct','mem_pct','disk_max_pct'];
+    else if (isNetGear) chartKeys = ['cpu_pct','mem_pct','disk_max_pct','temp_max_c'];
+    else                chartKeys = ['cpu_pct','mem_pct','swap_pct','disk_max_pct','temp_max_c'];
     let html = '<div class="gauge-grid">';
-    ['cpu_pct','mem_pct','swap_pct','disk_max_pct','temp_max_c'].forEach(k => {
+    chartKeys.forEach(k => {
       const pts = series[k] || [];
       html += `<div class="gauge">
         <div class="label">${labels[k]} <span class="muted">(${pts.length} pts)</span></div>
@@ -748,9 +959,11 @@ async function renderHostDetail(name) {
   $('host-actions').innerHTML = `
     <button onclick="actionPlaybook('gather','${name}')">🔬 Gather now</button>
     <button class="secondary" onclick="actionPlaybook('install_agent','${name}')">📦 Reinstall agent</button>
+    <button class="secondary" onclick="reprovisionHost('${name}')" title="Re-corre la cadena de aprovisionamiento (detect_os → install_agent → gather) en este host. Útil si el onboard inicial falló parcialmente y la pubkey ya está en el host.">🔁 Re-provision</button>
     <button class="secondary" onclick="powerAction('wake','${name}')">⏻ WoL</button>
     <button class="secondary" onclick="powerAction('reboot','${name}')">↻ Reboot</button>
     <button class="danger" onclick="powerAction('shutdown','${name}')">⏼ Shutdown</button>
+    <button class="danger" onclick="deleteHost('${name}')" title="Quita el host del inventario y purga sus caches locales. Opcional: también limpia pubkey + agente del host remoto.">🗑 Delete host</button>
   `;
 }
 
@@ -806,49 +1019,107 @@ function copyInstallCmd() {
   });
 }
 
-async function actionPlaybook(action, host, outId) {
-  // outId selects where to dump the output: defaults to onboarding's #log
-  // but Config view passes 'global-out' so it shows where the buttons are.
-  const out = $(outId || 'log');
-  out.textContent = `Running ${action}${host?(' on '+host):''}…\n(esto puede tardar varios minutos para acciones masivas)`;
-  try {
+async function actionPlaybook(action, host /*, outId — ignored: always logs to dock now */) {
+  const label = action + (host ? ' on ' + host : ' on ALL');
+  await runWithLog(label, async (setLog, appendLog) => {
+    setLog(`Running ${label}…\n(puede tardar varios minutos para acciones masivas)\n`);
     const url = 'api/action/' + action + (host ? ('?limit=' + encodeURIComponent(host)) : '');
     const r = await fetch(url, { method: 'POST' });
-    out.textContent = await r.text();
+    const txt = await r.text();
+    setLog(txt);
     pollAll();
-  } catch(e) { out.textContent = 'ERROR: '+e; }
+    if (!r.ok) { setLogStatus('error','error'); return false; }
+  });
 }
 async function powerAction(action, host) {
-  const out = $('log');
   const verb = {wake:'Waking', reboot:'Rebooting', shutdown:'Shutting down'}[action] || action;
   if (action !== 'wake' && !confirm(`${verb} ${host}?`)) return;
-  out.textContent = `${verb} ${host}…\n`;
-  try {
+  await runWithLog(`${action} ${host}`, async (setLog) => {
+    setLog(`${verb} ${host}…\n`);
     const r = await fetch(`api/power/${action}/${host}`, { method: 'POST' });
-    out.textContent = await r.text();
+    setLog(await r.text());
     setTimeout(pollAll, 3000);
-  } catch(e) { out.textContent = `ERROR: ${e}`; }
+    if (!r.ok) { setLogStatus('error','error'); return false; }
+  });
 }
-async function pveSyncNow(outId) {
+async function reprovisionHost(host) {
+  // Re-runs the deploy chain (detect_os → install_agent → install_bastion_key
+  // → gather) for a host already in inventory. Assumes the pubkey is on the
+  // remote. For password-based re-bootstrap, use Onboard form with force.
+  if (!confirm(
+    `Re-provision '${host}'?\n\n`+
+    `Re-corre: detect_os → install_agent → install_bastion_key → gather\n\n`+
+    `Requiere que la pubkey GOD ya esté en authorized_keys del host. `+
+    `Si no, usa el formulario Onboard con 'overwrite' + password.`
+  )) return;
+  await runWithLog(`re-provision ${host}`, async (setLog, appendLog) => {
+    setLog(`Re-provisioning ${host}…\n`);
+    const steps = ['detect_os', 'install_agent', 'install_bastion_key', 'gather'];
+    for (const step of steps) {
+      appendLog(`\n=== ${step} --limit ${host} ===\n`);
+      const r = await fetch(
+        'api/action/' + step + '?limit=' + encodeURIComponent(host),
+        { method: 'POST' }
+      );
+      appendLog(await r.text());
+      if (!r.ok) {
+        appendLog(`\n(✗ ${step} returned HTTP ${r.status}; aborting chain)\n`);
+        setLogStatus('error','error');
+        return false;
+      }
+    }
+    appendLog(`\n✓ Re-provision complete for ${host}.`);
+    pollAll();
+  });
+}
+async function deleteHost(host) {
+  const typed = prompt(
+    `Esto va a borrar '${host}' del inventario, regenerar inventory.yml y purgar los caches locales.\n\n`+
+    `Escribe el nombre del host para confirmar:`
+  );
+  if (typed !== host) {
+    if (typed !== null) alert(`Cancelado. Esperaba '${host}', escribiste '${typed}'.`);
+    return;
+  }
+  const purge = confirm(
+    `¿También limpiar el host remoto?\n\n`+
+    `OK  → SSH al host para borrar la pubkey de GOD Mode de authorized_keys y eliminar god-agent.\n`+
+    `Cancel → solo borrar local; la pubkey y el agente quedan en el host (puedes limpiarlos a mano).`
+  );
+  await runWithLog(`delete ${host}`, async (setLog) => {
+    setLog(`Deleting ${host} (purge_remote=${purge})…\n`);
+    const r = await fetch(`api/host/${encodeURIComponent(host)}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ purge_remote: purge }),
+    });
+    setLog(await r.text());
+    if (r.ok) {
+      setTimeout(() => { location.hash = 'hosts'; pollAll(); }, 1500);
+    } else { setLogStatus('error','error'); return false; }
+  });
+}
+async function pveSyncNow() {
   const s = $('pve-status');
   if (s) s.textContent = ' syncing…';
-  const out = outId ? $(outId) : null;
-  if (out) out.textContent = 'Syncing Proxmox API…';
-  try {
+  await runWithLog('pve_sync', async (setLog) => {
+    setLog('Syncing Proxmox API…\n');
     const r = await fetch('api/pve_sync', { method: 'POST' });
     const txt = await r.text();
+    setLog(txt);
     if (s) s.textContent = r.ok ? ' ✓ synced' : (' ✗ ' + txt.slice(0,200));
-    if (out) out.textContent = txt;
     setTimeout(() => { if (s) s.textContent=''; }, 4000);
     pollAll();
-  } catch(e) {
-    if (s) s.textContent = ' ✗ ' + e;
-    if (out) out.textContent = 'ERROR: ' + e;
-  }
+    if (!r.ok) { setLogStatus('error','error'); return false; }
+  });
 }
 async function onboardSubmit(ev) {
   ev.preventDefault();
   const status = $('onboard-status');
+  // Capture password into a local before wiping the form field.
+  // We need to keep it around across a potential 409 → retry roundtrip
+  // (without re-prompting the user).
+  const password = $('o-pass').value || '';
   const body = {
     name: $('o-name').value,
     addr: $('o-addr').value,
@@ -857,26 +1128,65 @@ async function onboardSubmit(ev) {
     category: $('o-cat').value,
     chip: $('o-chip').value || '',
     parent: $('o-parent').value || '',
-    password: $('o-pass').value || '',
+    password: password,
+    force: $('o-force').checked,
   };
-  $('o-pass').value = '';   // wipe immediately
+  $('o-pass').value = '';   // wipe DOM immediately
   status.textContent = ' submitting…';
+  expandLog();
+  setLogStatus('running', 'running');
+  setLog(`Onboarding ${body.name}…\n`);
   try {
-    const r = await fetch('api/onboard', {
+    let r = await fetch('api/onboard', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
     });
-    const txt = await r.text();
-    $('log').textContent = txt;
+    let txt = await r.text();
+
+    // Auto-retry: if the host already exists (and the user didn't tick
+    // force up front), offer to overwrite. Re-submits with force=true
+    // using the same in-memory password so the user doesn't have to re-type.
+    if (r.status === 409 && !body.force) {
+      setLog(txt);
+      const ok = confirm(
+        `${body.name} ya existe en el inventario.\n\n`+
+        `¿Sobrescribir la entrada y re-correr el aprovisionamiento `+
+        `(bootstrap → ssh-copy-id si hay password → detect_os → install_agent → gather)?\n\n`+
+        `Los campos extra que el formulario no toca (mac, pve_token_*) se preservan.`
+      );
+      if (!ok) {
+        status.textContent = ' ✗ already exists (cancelled)';
+        setLogStatus('error', 'error');
+        return;
+      }
+      $('o-force').checked = true;
+      body.force = true;
+      status.textContent = ' retrying with force…';
+      appendLog(`\n--- retrying with force=true ---\n`);
+      r = await fetch('api/onboard', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      });
+      txt = await r.text();
+    }
+
+    setLog(txt);
     if (r.ok) {
-      status.textContent = ' ✓ added';
+      status.textContent = body.force ? ' ✓ updated + re-provisioned' : ' ✓ added';
+      setLogStatus('done', 'done');
       $('onboard-form').reset();
       pollAll();
     } else {
       status.textContent = ' ✗ ' + txt.slice(0,200);
+      setLogStatus('error', 'error');
     }
-  } catch(e) { status.textContent = ' ERROR: ' + e; }
+  } catch(e) {
+    status.textContent = ' ERROR: ' + e;
+    setLogStatus('error', 'error');
+    appendLog(`\nERROR: ${e}`);
+  }
 }
 
 // ============================================================
@@ -974,16 +1284,26 @@ def rerun_bootstrap() -> str:
 
 
 def ssh_copy_id_with_password(addr: str, user: str, port: int, password: str) -> tuple[bool, str]:
-    """Uses sshpass to push the GOD pubkey into ~/.ssh/authorized_keys
-    of the target host. Password is only held in this process, never
-    written to disk."""
+    """Uses sshpass to push the GOD pubkey into the target host's
+    authorized_keys. Writes to BOTH ~/.ssh/authorized_keys (POSIX) and
+    /etc/dropbear/authorized_keys (OpenWrt/Dropbear) when applicable —
+    OpenWrt's Dropbear reads ONLY from the latter, so writing the
+    POSIX path alone makes the install silently inert on OpenWrt.
+    Password is only held in this process, never written to disk."""
     pubkey = (DATA_DIR / ".ssh" / "id_ed25519.pub").read_text().strip()
     # ssh-copy-id is the right tool but it's interactive; we do the
-    # equivalent via shell on the remote.
+    # equivalent via shell on the remote. The dropbear branch is a no-op
+    # on POSIX hosts (no /etc/dropbear, no dropbear binary), so this is
+    # safe to run uniformly across Linux, macOS, OpenWrt.
     cmd_remote = (
+        "set -e; "
         "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
         "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && "
-        f"grep -qF '{pubkey}' ~/.ssh/authorized_keys || echo '{pubkey}' >> ~/.ssh/authorized_keys && "
+        f"grep -qF '{pubkey}' ~/.ssh/authorized_keys || echo '{pubkey}' >> ~/.ssh/authorized_keys; "
+        "if [ -d /etc/dropbear ] || command -v dropbear >/dev/null 2>&1; then "
+        "  mkdir -p /etc/dropbear && touch /etc/dropbear/authorized_keys && "
+        f"  grep -qF '{pubkey}' /etc/dropbear/authorized_keys || echo '{pubkey}' >> /etc/dropbear/authorized_keys; "
+        "fi; "
         "echo OK_PUBKEY_INSTALLED"
     )
     try:
@@ -1013,8 +1333,11 @@ def ssh_copy_id_with_password(addr: str, user: str, port: int, password: str) ->
 
 
 def onboard_host(payload: dict) -> tuple[int, str]:
-    """Adds a new host to /data/options.json, optionally bootstraps SSH
-    with password, runs detect_os + install_agent + gather."""
+    """Adds (or, with force=True, updates) a host in /data/options.json,
+    optionally bootstraps SSH with password, runs detect_os + install_agent
+    + gather. Idempotent under force=True so the user can retry after a
+    transient failure (bad password, host unreachable, etc.) without
+    having to delete the entry first."""
     required = ("name", "addr")
     for k in required:
         if not payload.get(k):
@@ -1027,6 +1350,7 @@ def onboard_host(payload: dict) -> tuple[int, str]:
     port = int(payload.get("port", 22))
     category = payload.get("category", "server")
     password = payload.get("password", "")  # optional, transient
+    force = bool(payload.get("force", False))
     if category not in CATEGORIES:
         return 400, f"unknown category {category}; valid: {','.join(CATEGORIES)}"
 
@@ -1035,23 +1359,45 @@ def onboard_host(payload: dict) -> tuple[int, str]:
     except Exception as e:
         return 500, f"can't read options.json: {e}"
 
-    if any(h["name"] == name for h in opts.get("hosts", [])):
-        return 409, f"host '{name}' already exists"
+    hosts = opts.setdefault("hosts", [])
+    existing_idx = next((i for i, h in enumerate(hosts) if h.get("name") == name), None)
 
-    new_host = {"name": name, "addr": addr, "user": user, "port": port, "category": category}
+    if existing_idx is not None and not force:
+        # Tell the UI exactly how to retry — it auto-prompts and re-submits.
+        return 409, (
+            f"host '{name}' already exists. Send force=true to overwrite "
+            f"(merges payload onto the existing entry and re-runs the "
+            f"provisioning chain)."
+        )
+
+    # Build the payload-driven host spec
+    form_host: dict = {"name": name, "addr": addr, "user": user, "port": port, "category": category}
     chip   = (payload.get("chip")   or "").strip()
     parent = (payload.get("parent") or "").strip()
     if chip:
-        new_host["chip"] = chip
+        form_host["chip"] = chip
     if parent:
-        new_host["parent"] = parent
-    opts.setdefault("hosts", []).append(new_host)
+        form_host["parent"] = parent
+
+    if existing_idx is not None:
+        # Force-update: merge form fields onto existing, preserving extras
+        # (mac address, pve_token_id/secret, anything else the form doesn't touch).
+        merged = dict(hosts[existing_idx])  # start from existing
+        merged.update(form_host)             # override with form values
+        hosts[existing_idx] = merged
+        action_msg = f"✓ Host '{name}' updated in place (force=true)."
+    else:
+        hosts.append(form_host)
+        action_msg = f"✓ Host '{name}' ({addr}) added under category '{category}'."
+
     try:
         OPTS_FILE.write_text(json.dumps(opts, indent=2))
     except Exception as e:
         return 500, f"can't write options.json: {e}"
 
-    log_lines = [f"✓ Host '{name}' ({addr}) added under category '{category}'."]
+    log_lines = [action_msg]
+    sup_ok, sup_msg = sync_options_to_supervisor()
+    log_lines.append(("✓ " if sup_ok else "⚠ ") + sup_msg)
 
     # Step 1: regen inventory
     log_lines.append("\n=== bootstrap (regen inventory) ===")
@@ -1077,9 +1423,141 @@ def onboard_host(payload: dict) -> tuple[int, str]:
     log_lines.append(f"\n=== install_agent --limit {name} ===")
     log_lines.append(run_playbook("install_agent", limit=name))
 
+    # Step 4b: install bastion (LXC 104) pubkey alongside the addon's own.
+    # No-op if /data/secrets/bastion.pub doesn't exist yet — the playbook
+    # logs SKIP and continues, so this is safe even on fresh installs.
+    log_lines.append(f"\n=== install_bastion_key --limit {name} ===")
+    log_lines.append(run_playbook("install_bastion_key", limit=name))
+
     # Step 5: gather (one-shot, results visible immediately on next poll)
     log_lines.append(f"\n=== gather --limit {name} ===")
     log_lines.append(run_playbook("gather", limit=name))
+
+    # Step 6: final health check — query the collector for this host and
+    # surface a clear OK/FAIL summary so the user knows whether the
+    # provisioning chain landed an actually-working host (and not just
+    # "ansible ran without error but the agent never replied").
+    log_lines.append("\n=== final health check ===")
+    try:
+        with urllib.request.urlopen(f"{COLLECTOR_URL}/api/hosts", timeout=10) as resp:
+            all_hosts = json.loads(resp.read().decode("utf-8"))
+        h = all_hosts.get(name) or {}
+        if h.get("_ok"):
+            cpu = h.get("cpu_pct", "?")
+            mem = h.get("mem_pct", "?")
+            disk = h.get("disk_pct", "?")
+            log_lines.append(
+                f"✓ HEALTH OK — {name} responding. cpu={cpu}% mem={mem}% disk={disk}%"
+            )
+        else:
+            err = h.get("_error") or "not_polled_yet"
+            log_lines.append(
+                f"⚠ HEALTH NOT-YET-OK — {name} not responding. error='{err}'. "
+                f"If error is 'not_polled_yet', the next collector poll (≤ poll_interval) "
+                f"may still bring it green. Otherwise: re-check SSH, agent, or pubkey."
+            )
+    except Exception as e:
+        log_lines.append(f"(warning) health check skipped: {e}")
+
+    return 200, "\n".join(log_lines)
+
+
+def delete_host(name: str, purge_remote: bool = False) -> tuple[int, str]:
+    """Removes a host from /data/options.json, regenerates the inventory,
+    purges local caches and (optionally) runs uninstall_agent on the
+    remote host before removal."""
+    if not name or not name.replace("_", "").isalnum():
+        return 400, "name must be [a-z0-9_]+"
+    try:
+        opts = json.loads(OPTS_FILE.read_text())
+    except Exception as e:
+        return 500, f"can't read options.json: {e}"
+
+    hosts = opts.get("hosts", []) or []
+    existing = next((h for h in hosts if h.get("name") == name), None)
+    if existing is None:
+        return 404, f"host '{name}' not in inventory"
+    # Capture the addr before we lose the entry — needed for known_hosts cleanup.
+    host_addr = existing.get("addr")
+
+    log_lines: list[str] = []
+
+    # Step 0 (optional): remote cleanup BEFORE removing from inventory,
+    # so the playbook still sees the host and SSH key.
+    if purge_remote:
+        log_lines.append(f"=== uninstall_agent --limit {name} ===")
+        try:
+            log_lines.append(run_playbook("uninstall_agent", limit=name))
+        except Exception as e:
+            log_lines.append(f"(warning) uninstall_agent exception: {e}")
+
+    # Step 1: drop from options.json
+    opts["hosts"] = [h for h in hosts if h.get("name") != name]
+    try:
+        OPTS_FILE.write_text(json.dumps(opts, indent=2))
+    except Exception as e:
+        return 500, f"can't write options.json: {e}"
+    log_lines.append(f"\n✓ Host '{name}' removed from options.json.")
+    sup_ok, sup_msg = sync_options_to_supervisor()
+    log_lines.append(("✓ " if sup_ok else "⚠ ") + sup_msg)
+
+    # Step 2: regen inventory
+    log_lines.append("\n=== bootstrap (regen inventory) ===")
+    log_lines.append(rerun_bootstrap())
+
+    # Step 3: purge local caches (best-effort; missing files are fine)
+    cache_paths = [
+        DATA_DIR / "metrics"        / f"{name}.json",
+        DATA_DIR / "metadata"       / f"{name}.json",
+        DATA_DIR / "cache" / "discover" / f"{name}.json",
+        DATA_DIR / "cache" / "updates"  / f"{name}.json",
+        DATA_DIR / "cache" / "audit"    / f"{name}.json",
+        DATA_DIR / "locks" / f"discover-{name}.lock",
+        DATA_DIR / "locks" / f"updates-{name}.lock",
+        DATA_DIR / "locks" / f"audit-{name}.lock",
+    ]
+    purged = []
+    for p in cache_paths:
+        try:
+            if p.exists():
+                p.unlink()
+                purged.append(str(p))
+        except Exception as e:
+            log_lines.append(f"(warning) could not delete {p}: {e}")
+    log_lines.append(f"\n✓ Purged {len(purged)} cache file(s):")
+    for q in purged:
+        log_lines.append(f"  - {q}")
+
+    # Step 4: scrub known_hosts of the addon's SSH client. Avoids
+    # `REMOTE HOST IDENTIFICATION HAS CHANGED` on re-add if the target's
+    # host key has changed since the prior install (OS reinstall, fresh
+    # cert, distro upgrade, etc.).
+    known_hosts = DATA_DIR / ".ssh" / "known_hosts"
+    if known_hosts.exists():
+        scrub_targets = [name]
+        if host_addr:
+            scrub_targets.append(host_addr)
+        scrubbed = []
+        for tgt in scrub_targets:
+            try:
+                p = subprocess.run(
+                    ["ssh-keygen", "-R", tgt, "-f", str(known_hosts)],
+                    capture_output=True, text=True, timeout=5,
+                )
+                # ssh-keygen prints "# Host <tgt> found: line N" + rewrites the file
+                if p.returncode == 0 and "found" in (p.stdout + p.stderr).lower():
+                    scrubbed.append(tgt)
+            except Exception as e:
+                log_lines.append(f"(warning) ssh-keygen -R {tgt} failed: {e}")
+        if scrubbed:
+            log_lines.append(f"\n✓ Scrubbed known_hosts entries for: {', '.join(scrubbed)}")
+        else:
+            log_lines.append("\n(info) No known_hosts entries to scrub.")
+
+    log_lines.append(
+        "\n(info) collector in-memory CACHE will drop this host on the next poll cycle "
+        "(rebuilt from inventory.yml every poll_interval seconds)."
+    )
 
     return 200, "\n".join(log_lines)
 
@@ -1102,7 +1580,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         p = self.path
         if "/api/" not in p:
-            self._send(200, INDEX_HTML)
+            self._send(200, INDEX_HTML.replace("__GOD_VERSION__", VERSION))
             return
         idx = p.rfind("/api/")
         sub = p[idx + 1:]
@@ -1153,6 +1631,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(400, "usage: POST /api/power/<wake|shutdown|reboot>/<host>", "text/plain")
                 return
             code, msg = power_action(parts[1], parts[0])
+            self._send(code, msg, "text/plain; charset=utf-8")
+            return
+        # /api/host/<name>/delete
+        idx_host = p.rfind("/api/host/")
+        if idx_host != -1 and p.rstrip("/").endswith("/delete"):
+            tail = p[idx_host + len("/api/host/"):].rstrip("/")
+            if tail.endswith("/delete"):
+                tail = tail[:-len("/delete")]
+            name = tail.strip("/")
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            purge_remote = False
+            if length > 0:
+                try:
+                    body = json.loads(self.rfile.read(length).decode("utf-8"))
+                    purge_remote = bool(body.get("purge_remote", False))
+                except Exception as e:
+                    self._send(400, f"bad json: {e}", "text/plain")
+                    return
+            code, msg = delete_host(name, purge_remote=purge_remote)
             self._send(code, msg, "text/plain; charset=utf-8")
             return
         self._send(404, "not found", "text/plain")

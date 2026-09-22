@@ -1,0 +1,135 @@
+---
+# =====================================================================
+#  discover.yml — deep discovery for a single host (fase c).
+#
+#  Triggered by `god-discover.py` on demand. Writes JSON to
+#  /data/cache/discover/<host>.json on the controller side.
+#
+#  Required: target host has Python (any version) reachable by Ansible.
+#  Skips busybox/windows hosts — they need their own variant.
+# =====================================================================
+- name: GOD Mode discover
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  strategy: free
+  vars:
+    cache_dir: /data/cache/discover
+    metadata_dir: /data/metadata
+  tasks:
+    - name: Ensure cache dir exists (controller)
+      ansible.builtin.file:
+        path: "{{ cache_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Read OS metadata (if present)
+      ansible.builtin.set_fact:
+        meta: "{{ (lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') or '{}') | from_json }}"
+
+    - name: Skip non-POSIX hosts (windows/busybox unsupported in this playbook)
+      ansible.builtin.meta: end_host
+      when: meta.god_os | default('linux') in ['windows', 'busybox']
+
+    - name: Gather facts (hardware/network/virtual/mounts)
+      ansible.builtin.setup:
+        gather_subset:
+          - hardware
+          - network
+          - virtual
+          - mounts
+      failed_when: false
+
+    - name: Collect systemd service facts
+      ansible.builtin.service_facts:
+      failed_when: false
+
+    - name: Collect package facts
+      ansible.builtin.package_facts:
+        manager: auto
+      failed_when: false
+
+    - name: Run remote probes (ports/users/containers/pve/disks)
+      ansible.builtin.raw: |
+        set -u
+        echo '====PORTS===='
+        if command -v ss >/dev/null 2>&1; then
+          ss -tlnpH 2>/dev/null | awk '{print $4, $6}'
+        else
+          netstat -tlnp 2>/dev/null | awk 'NR>2{print $4, $7}'
+        fi
+        echo '====USERS===='
+        getent passwd 2>/dev/null | awk -F: '$3 >= 1000 && $3 < 65534 {print $1":"$3":"$6":"$7}'
+        echo '====DOCKER===='
+        if command -v docker >/dev/null 2>&1; then
+          docker ps --format '{{ "{{" }}.Names{{ "}}" }}|{{ "{{" }}.Image{{ "}}" }}|{{ "{{" }}.Status{{ "}}" }}|{{ "{{" }}.Ports{{ "}}" }}' 2>/dev/null
+        fi
+        echo '====PCT===='
+        if command -v pct >/dev/null 2>&1; then
+          pct list 2>/dev/null | awk 'NR>1{print}'
+        fi
+        echo '====QM===='
+        if command -v qm >/dev/null 2>&1; then
+          qm list 2>/dev/null | awk 'NR>1{print}'
+        fi
+        echo '====DISKS===='
+        if command -v lsblk >/dev/null 2>&1; then
+          lsblk -dn -o NAME,SIZE,TYPE,MODEL 2>/dev/null | awk '$3=="disk"{$1=$1; print}'
+        fi
+        echo '====REBOOT===='
+        if [ -f /var/run/reboot-required ] || [ -f /run/reboot-required ]; then echo yes; else echo no; fi
+        echo '====UPTIME===='
+        cat /proc/uptime 2>/dev/null | awk '{print int($1)}'
+        echo '====END===='
+      register: probes
+      changed_when: false
+      failed_when: false
+      timeout: 20
+
+    # Build the doc. Heavy parsing of probes_raw happens in god-discover.py
+    # — Jinja string slicing is painful and we already have a Python wrapper.
+    - name: Compose discover doc
+      ansible.builtin.set_fact:
+        discover_doc:
+          host: "{{ inventory_hostname }}"
+          ansible_host: "{{ ansible_host | default('') }}"
+          gathered_at: "{{ lookup('pipe','date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+          os:
+            distribution: "{{ ansible_distribution | default('unknown') }}"
+            version: "{{ ansible_distribution_version | default('unknown') }}"
+            release: "{{ ansible_distribution_release | default('unknown') }}"
+            family: "{{ ansible_os_family | default('unknown') }}"
+            kernel: "{{ ansible_kernel | default('unknown') }}"
+            architecture: "{{ ansible_architecture | default('unknown') }}"
+          virtualization:
+            type: "{{ ansible_virtualization_type | default('unknown') }}"
+            role: "{{ ansible_virtualization_role | default('unknown') }}"
+          hardware:
+            cpu_vcpus: "{{ ansible_processor_vcpus | default(0) }}"
+            cpu_cores: "{{ ansible_processor_cores | default(0) }}"
+            cpu_model: "{{ (ansible_processor | default(['','','unknown']))[2] | default('unknown') }}"
+            memory_mb_total: "{{ ansible_memtotal_mb | default(0) }}"
+            memory_mb_free: "{{ ansible_memfree_mb | default(0) }}"
+          network:
+            hostname: "{{ ansible_hostname | default(inventory_hostname) }}"
+            fqdn: "{{ ansible_fqdn | default(inventory_hostname) }}"
+            default_ipv4: "{{ ansible_default_ipv4.address | default('') }}"
+            interfaces: "{{ ansible_interfaces | default([]) }}"
+          services:
+            active: "{{ (ansible_facts.services | default({}) | dict2items | selectattr('value.state','equalto','running') | map(attribute='key') | list) | sort }}"
+            failed: "{{ (ansible_facts.services | default({}) | dict2items | selectattr('value.state','equalto','failed') | map(attribute='key') | list) | sort }}"
+            count_total: "{{ ansible_facts.services | default({}) | length }}"
+          packages:
+            count: "{{ ansible_facts.packages | default({}) | length }}"
+          mounts: "{{ ansible_mounts | default([]) }}"
+          probes_raw: "{{ probes.stdout | default('') }}"
+          probes_ok: "{{ probes.rc | default(-1) == 0 }}"
+
+    - name: Save discover doc (controller side)
+      ansible.builtin.copy:
+        content: "{{ discover_doc | to_nice_json }}"
+        dest: "{{ cache_dir }}/{{ inventory_hostname }}.json"
+        mode: "0644"
+      delegate_to: localhost
