@@ -102,8 +102,13 @@ if [ -d /config ]; then
 fi
 
 # 4) Build inventory.yml grouped by category, plus optional pve_node parent groups
-HOSTS_JSON=$(bashio::config "hosts | tojson" 2>/dev/null || echo "[]")
-SSH_USER_DEFAULT=$(bashio::config "ssh_user" 2>/dev/null || echo "root")
+# Read directly from /data/options.json (NOT via bashio::config). bashio caches
+# the Supervisor's view of options, which gets out-of-sync when god-webui.py
+# writes options.json directly (onboard_host, delete_host). Reading with jq
+# guarantees the inventory reflects the *current* on-disk state, no Supervisor
+# restart required.
+HOSTS_JSON=$(jq -c '.hosts // []' /data/options.json 2>/dev/null || echo "[]")
+SSH_USER_DEFAULT=$(jq -r '.ssh_user // "root"' /data/options.json 2>/dev/null || echo "root")
 if [ -z "${HOSTS_JSON}" ] || [ "${HOSTS_JSON}" = "null" ]; then
     HOSTS_JSON="[]"
 fi

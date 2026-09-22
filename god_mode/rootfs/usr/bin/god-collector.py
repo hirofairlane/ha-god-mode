@@ -22,9 +22,22 @@ import json
 import os
 import socketserver
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
+
+# Sibling modules god-{discover,updates,audit}.py — filenames with a dash,
+# can't `import` directly, so we go through importlib.util.
+import importlib.util as _ilu
+def _load_sibling(modname: str, path: str):
+    spec = _ilu.spec_from_file_location(modname, path)
+    mod = _ilu.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(mod)       # type: ignore[union-attr]
+    return mod
+god_discover = _load_sibling("god_discover", "/usr/bin/god-discover.py")
+god_updates  = _load_sibling("god_updates",  "/usr/bin/god-updates.py")
+god_audit    = _load_sibling("god_audit",    "/usr/bin/god-audit.py")
 
 DATA_DIR     = Path(os.environ.get("GOD_DATA_DIR", "/data"))
 METRICS_DIR  = DATA_DIR / "metrics"
@@ -122,11 +135,49 @@ def load_pve_children() -> dict[str, dict]:
     return out
 
 
+def load_inventory_meta() -> dict[str, dict]:
+    """Returns { host_name: { addr, user, port, _pve_token_id, _pve_token_configured } }
+    sourced from options.json. Used to inject the inventory-side metadata
+    into the collector output so the dashboard can show IP / SSH endpoint
+    and Proxmox token status without a separate fetch.
+
+    `_pve_token_configured` is True iff pve_token_secret has a non-empty
+    value — the dashboard uses it to surface a clear "missing secret"
+    troubleshoot panel without exposing the secret itself."""
+    out: dict[str, dict] = {}
+    try:
+        opts = json.loads(OPTS_FILE.read_text())
+    except Exception:
+        return out
+    for h in opts.get("hosts", []) or []:
+        name = h.get("name")
+        if not name:
+            continue
+        entry: dict = {
+            "addr": h.get("addr"),
+            "user": h.get("user") or "root",
+            "port": int(h.get("port") or 22),
+        }
+        if h.get("category") == "pve_node":
+            entry["_pve_token_id"] = h.get("pve_token_id") or ""
+            entry["_pve_token_configured"] = bool((h.get("pve_token_secret") or "").strip())
+        out[name] = entry
+    return out
+
+
 def load_metrics_from_disk() -> dict[str, dict]:
     out = {}
     cats    = load_categories()
     chips   = load_chips()
     parents = load_parents()
+    inv     = load_inventory_meta()
+    def _inject_inv(name: str, entry: dict) -> None:
+        m = inv.get(name) or {}
+        if m.get("addr"): entry["addr"] = m["addr"]
+        if m.get("user"): entry["user"] = m["user"]
+        if m.get("port"): entry["port"] = m["port"]
+        if "_pve_token_id" in m: entry["_pve_token_id"] = m["_pve_token_id"]
+        if "_pve_token_configured" in m: entry["_pve_token_configured"] = m["_pve_token_configured"]
     # Include even hosts that haven't replied yet, so the dashboard can
     # render them as offline.
     for name, cat in cats.items():
@@ -140,6 +191,7 @@ def load_metrics_from_disk() -> dict[str, dict]:
             out[name]["_chip"] = chips[name]
         if name in parents:
             out[name]["_parent"] = parents[name]
+        _inject_inv(name, out[name])
     if not METRICS_DIR.exists():
         return out
     for f in METRICS_DIR.glob("*.json"):
@@ -153,9 +205,12 @@ def load_metrics_from_disk() -> dict[str, dict]:
                 d["_chip"] = chips[name]
             if name in parents:
                 d["_parent"] = parents[name]
+            _inject_inv(name, d)
             out[name] = d
         except Exception as e:
-            out[name] = {"_ok": False, "_error": f"parse: {e}", "_category": cats.get(name, "uncategorized")}
+            err_entry = {"_ok": False, "_error": f"parse: {e}", "_category": cats.get(name, "uncategorized")}
+            _inject_inv(name, err_entry)
+            out[name] = err_entry
     return out
 
 
@@ -217,6 +272,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _handle_ondemand(self, fn, label: str, *, strip: str):
+        """Shared dispatch for /api/{discover,updates,audit}/<host>[?refresh=1].
+        - Rejects unknown hosts with 404 (host must exist in inventory).
+        - Catches uncaught exceptions in the wrapper and returns 500.
+        """
+        from urllib.parse import urlparse, parse_qs
+        u = urlparse(self.path)
+        host = u.path.rsplit("/", 1)[-1]
+        qs = parse_qs(u.query)
+        refresh = qs.get("refresh", ["0"])[0] in ("1", "true", "yes")
+        with LOCK:
+            known = host in CACHE
+        if not known:
+            self._send(404, {"error": f"unknown host {host}"})
+            return
+        try:
+            status, body = fn(host, refresh=refresh)
+        except Exception as e:
+            self._send(500, {"error": f"{label} crashed: {e!r}"})
+            return
+        self._send(status, body)
+
     def do_GET(self):
         if self.path == "/api/hosts":
             with LOCK:
@@ -266,6 +343,40 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(404, {"error": f"unknown pve_node {node}"})
             else:
                 self._send(200, snap)
+            return
+        if self.path.startswith("/api/discover/"):
+            return self._handle_ondemand(god_discover.discover, "discover", strip="/api/discover/")
+        if self.path.startswith("/api/updates/"):
+            return self._handle_ondemand(god_updates.updates, "updates", strip="/api/updates/")
+        if self.path.startswith("/api/audit/"):
+            return self._handle_ondemand(god_audit.audit, "audit", strip="/api/audit/")
+        if self.path.startswith("/api/snapshot/"):
+            # /api/snapshot/<host>[?refresh=1]
+            # Combined view: gather metrics from CACHE + discover + updates +
+            # audit. Returns whatever succeeds; each section carries its
+            # own status (200/202/503) so the consumer can decide.
+            from urllib.parse import urlparse, parse_qs
+            u = urlparse(self.path)
+            host = u.path.rsplit("/", 1)[-1]
+            qs = parse_qs(u.query)
+            refresh = qs.get("refresh", ["0"])[0] in ("1", "true", "yes")
+            with LOCK:
+                known = host in CACHE
+                metrics = dict(CACHE.get(host, {})) if known else None
+            if not known:
+                self._send(404, {"error": f"unknown host {host}"})
+                return
+            sections: dict = {"host": host, "metrics": metrics}
+            for label, fn in (("discover", god_discover.discover),
+                              ("updates",  god_updates.updates),
+                              ("audit",    god_audit.audit)):
+                try:
+                    st, body = fn(host, refresh=refresh)
+                except Exception as e:
+                    sections[label] = {"_error": f"{label} crashed: {e!r}", "_status": 500}
+                else:
+                    sections[label] = {"_status": st, **body}
+            self._send(200, sections)
             return
         if self.path.startswith("/api/history/"):
             # /api/history/<host>[?metric=cpu_pct,mem_pct]

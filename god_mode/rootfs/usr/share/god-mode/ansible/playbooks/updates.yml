@@ -1,0 +1,166 @@
+---
+# =====================================================================
+#  updates.yml — list pending OS package updates for a single host.
+#
+#  Triggered by `god-updates.py` on demand. Writes raw JSON to
+#  /data/cache/updates/<host>.json on the controller side; the Python
+#  wrapper turns the per-OS raw payload into a structured shape:
+#    { pending: int, security: int|null, packages: [str, ...], raw: str }
+#
+#  Supports linux (apt/dnf/zypper/pacman), busybox (opkg), macos (brew),
+#  and windows (Get-WindowsUpdate via PowerShell).
+# =====================================================================
+- name: GOD Mode updates
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  strategy: free
+  vars:
+    cache_dir: /data/cache/updates
+    metadata_dir: /data/metadata
+  tasks:
+    - name: Ensure cache dir exists (controller)
+      ansible.builtin.file:
+        path: "{{ cache_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Read OS metadata (if present)
+      ansible.builtin.set_fact:
+        meta: "{{ (lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') or '{}') | from_json }}"
+
+    - name: Skip hosts with unknown OS (run detect_os first)
+      ansible.builtin.meta: end_host
+      when: meta.god_os is not defined or meta.god_os == 'unknown'
+
+    # --- POSIX (linux + busybox) -----------------------------------------
+    # Probe in order of likelihood, stop on first non-empty stdout. The
+    # raw block prints "MGR=<name>" + raw output of the relevant cmd so
+    # the Python wrapper can parse per-manager.
+    #
+    # `command -v` is a builtin and on BusyBox ash returns 127 when the
+    # binary isn't in PATH. We additionally probe well-known absolute
+    # paths so OpenWrt/Alpine/Buildroot images detect correctly even
+    # when the agent's PATH is minimal.
+    - name: Probe POSIX package manager updates
+      ansible.builtin.raw: |
+        set +e
+        find_mgr() {
+          for c in "$@"; do
+            if command -v "$c" >/dev/null 2>&1; then echo "$c"; return; fi
+            for p in /usr/bin/$c /bin/$c /sbin/$c /usr/sbin/$c /usr/local/bin/$c /opt/homebrew/bin/$c; do
+              [ -x "$p" ] && { echo "$p"; return; }
+            done
+          done
+          echo ""
+        }
+        APT=$(find_mgr apt-get)
+        DNF=$(find_mgr dnf)
+        ZYP=$(find_mgr zypper)
+        PAC=$(find_mgr pacman)
+        OPK=$(find_mgr opkg)
+        BREW=$(find_mgr brew)
+        if [ -n "$APT" ]; then
+          echo "MGR=apt"
+          DEBIAN_FRONTEND=noninteractive $APT -s -qq upgrade 2>/dev/null | grep -E '^Inst ' || true
+          echo "---"
+          apt list --upgradable 2>/dev/null | tail -n +2 || true
+          echo "---"
+          $APT -s -o Debug::NoLocking=true upgrade 2>/dev/null | grep -c '^Inst .* security' || echo 0
+        elif [ -n "$DNF" ]; then
+          echo "MGR=dnf"
+          $DNF check-update --quiet 2>/dev/null || true
+          echo "---"
+          $DNF updateinfo list security --quiet 2>/dev/null | wc -l || echo 0
+        elif [ -n "$ZYP" ]; then
+          echo "MGR=zypper"
+          $ZYP --non-interactive list-updates 2>/dev/null || true
+          echo "---"
+          $ZYP --non-interactive list-patches --category security 2>/dev/null | grep -c '^[a-zA-Z]' || echo 0
+        elif [ -n "$PAC" ]; then
+          echo "MGR=pacman"
+          CHK=$(find_mgr checkupdates)
+          if [ -n "$CHK" ]; then $CHK 2>/dev/null; else $PAC -Qu 2>/dev/null || true; fi
+          echo "---"
+          echo 0
+        elif [ -n "$OPK" ]; then
+          echo "MGR=opkg"
+          # OpenWrt: list-upgradable requires a recent `opkg update`. Do a
+          # lightweight refresh (best-effort) before listing. Cost: ~2s.
+          $OPK update >/dev/null 2>&1
+          $OPK list-upgradable 2>/dev/null || true
+          echo "---"
+          echo 0
+        elif [ -n "$BREW" ]; then
+          echo "MGR=brew"
+          $BREW outdated 2>/dev/null || true
+          echo "---"
+          echo 0
+        else
+          echo "MGR=unknown"
+          echo "---"
+          echo 0
+        fi
+      register: posix_updates
+      changed_when: false
+      failed_when: false
+      timeout: 60
+      when: meta.god_os in ['linux','busybox','macos']
+
+    # --- Windows ---------------------------------------------------------
+    - name: Probe Windows updates (PowerShell + PSWindowsUpdate)
+      ansible.builtin.raw: |
+        powershell -NoProfile -Command "
+          $ErrorActionPreference='SilentlyContinue';
+          # PSWindowsUpdate may not be installed; fall back to simple count.
+          if (Get-Module -ListAvailable -Name PSWindowsUpdate) {
+            Import-Module PSWindowsUpdate -ErrorAction Stop;
+            $u = Get-WindowsUpdate -MicrosoftUpdate -IgnoreReboot;
+            Write-Output 'MGR=pswindowsupdate';
+            $u | ForEach-Object { Write-Output \$_.Title };
+            Write-Output '---';
+            (\$u | Where-Object { \$_.MsrcSeverity -in 'Critical','Important' }).Count;
+          } else {
+            Write-Output 'MGR=windows_basic';
+            \$session = New-Object -ComObject Microsoft.Update.Session;
+            \$searcher = \$session.CreateUpdateSearcher();
+            \$result = \$searcher.Search('IsInstalled=0 and Type=\\\"Software\\\"');
+            \$result.Updates | ForEach-Object { Write-Output \$_.Title };
+            Write-Output '---';
+            0;
+          }
+        "
+      register: win_updates
+      changed_when: false
+      failed_when: false
+      timeout: 120
+      when: meta.god_os == 'windows'
+
+    # --- Persist to controller -------------------------------------------
+    - name: Pick the relevant stdout
+      ansible.builtin.set_fact:
+        updates_raw: >-
+          {%- if meta.god_os == 'windows' -%}
+            {{ win_updates.stdout | default('') }}
+          {%- else -%}
+            {{ posix_updates.stdout | default('') }}
+          {%- endif -%}
+
+    - name: Write raw updates payload to controller cache
+      ansible.builtin.copy:
+        dest: "{{ cache_dir }}/{{ inventory_hostname }}.raw.json"
+        content: |
+          {
+            "host": "{{ inventory_hostname }}",
+            "god_os": "{{ meta.god_os | default('unknown') }}",
+            "fetched_at_unix": {{ ansible_date_time.epoch | default(lookup('pipe', 'date +%s')) }},
+            "raw": {{ updates_raw | to_json }}
+          }
+        mode: "0644"
+      delegate_to: localhost
+
+    - name: Report summary
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} updates raw payload written ({{ (updates_raw | length) }} bytes)"

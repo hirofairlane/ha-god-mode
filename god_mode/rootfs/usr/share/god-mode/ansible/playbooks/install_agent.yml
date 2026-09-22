@@ -26,8 +26,11 @@
   tasks:
     # --- Read pre-detected OS (or detect inline) -------------------------
     - name: Read detect_os metadata (if present)
+      # `lookup(..., errors='ignore')` returns None on a missing file,
+      # not undefined, so `| default('{}')` doesn't catch it. The
+      # `or '{}'` coerces None → '{}' before from_json.
       ansible.builtin.set_fact:
-        meta: "{{ lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') | default('{}') | from_json }}"
+        meta: "{{ (lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') or '{}') | from_json }}"
 
     - name: Inline detect when metadata absent
       ansible.builtin.raw: uname -a 2>/dev/null || powershell -NoProfile -Command "$PSVersionTable.PSVersion.Major"
@@ -122,11 +125,20 @@
     - name: Push agent (POSIX hosts) via base64
       ansible.builtin.raw: |
         DEST="{{ agent_dest | trim }}"
+        # PiKVM ships with `/` mounted read-only; toggle rw → write → ro.
+        # The `rw`/`ro` helpers are idempotent and standard on PiKVM.
+        if command -v rw >/dev/null 2>&1 && command -v ro >/dev/null 2>&1; then
+          PIKVM_REMOUNT=1
+          rw
+        fi
         mkdir -p "$(dirname "$DEST")" 2>/dev/null
         cat <<'__GOD_AGENT_EOF__' > "$DEST"
         {{ agent_content }}
         __GOD_AGENT_EOF__
         chmod 755 "$DEST"
+        if [ "${PIKVM_REMOUNT:-0}" = "1" ]; then
+          ro
+        fi
       changed_when: false
       failed_when: false
       when: meta.god_os in ['linux','busybox','macos']

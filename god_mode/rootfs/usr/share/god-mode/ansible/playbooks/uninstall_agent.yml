@@ -1,0 +1,138 @@
+---
+# =====================================================================
+#  uninstall_agent.yml - inverse of install_agent.yml
+#
+#  Steps:
+#   1. Detect OS (re-uses metadata file written by detect_os.yml).
+#   2. Remove the GOD Mode pubkey from remote authorized_keys.
+#   3. Remove the agent binary from the OS-appropriate path.
+#
+#  Triggered by:
+#    - Web UI "Delete host" action (with purge_remote=true)
+#    - Manual: ansible-playbook uninstall_agent.yml --limit <host>
+#
+#  Best-effort: never fails the run if the host is unreachable or
+#  files are already gone. Errors are reported in debug output.
+# =====================================================================
+- name: GOD Mode uninstall_agent (universal)
+  hosts: all
+  gather_facts: false
+  any_errors_fatal: false
+  strategy: free
+  vars:
+    pubkey_path: /data/.ssh/id_ed25519.pub
+    metadata_dir: /data/metadata
+  tasks:
+    # --- Read pre-detected OS (or detect inline) -------------------------
+    - name: Read detect_os metadata (if present)
+      # `lookup(..., errors='ignore')` returns None on a missing file,
+      # not undefined, so `| default('{}')` doesn't catch it. The
+      # `or '{}'` coerces None → '{}' before from_json.
+      ansible.builtin.set_fact:
+        meta: "{{ (lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') or '{}') | from_json }}"
+
+    - name: Inline detect when metadata absent
+      ansible.builtin.raw: uname -a 2>/dev/null || powershell -NoProfile -Command "$PSVersionTable.PSVersion.Major"
+      register: probe
+      changed_when: false
+      failed_when: false
+      when: meta.god_os is not defined
+
+    - name: Classify when metadata absent
+      ansible.builtin.set_fact:
+        meta:
+          god_os: >-
+            {%- if probe.stdout is defined and 'Darwin' in probe.stdout -%}macos
+            {%- elif probe.stdout is defined and probe.stdout | trim | length > 0 and probe.stdout | regex_search('^[0-9]+$') -%}windows
+            {%- elif probe.stdout is defined and 'Linux' in probe.stdout -%}{% if 'OpenWrt' in probe.stdout %}busybox{% else %}linux{% endif %}
+            {%- else -%}unknown
+            {%- endif -%}
+      when: meta.god_os is not defined
+
+    - name: Compute agent target path
+      ansible.builtin.set_fact:
+        agent_dest: >-
+          {%- if meta.god_os == 'windows' -%}
+            C:\ProgramData\god-mode\god-agent.ps1
+          {%- elif meta.god_os == 'busybox' -%}
+            /usr/bin/god-agent
+          {%- elif ansible_user == 'root' -%}
+            /usr/local/bin/god-agent
+          {%- else -%}
+            $HOME/.local/bin/god-agent
+          {%- endif -%}
+
+    - name: Show plan
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} OS={{ meta.god_os }} dst={{ agent_dest | trim }}"
+
+    # --- Remove pubkey (POSIX) -------------------------------------------
+    # Match by comment suffix `god-mode@*` (not by exact pubkey content)
+    # so we also clean up orphan keys from previous addon installs where
+    # the keypair was regenerated. Comment grammar: `ssh-<type> <b64> <comment>`
+    # where our comment is always `god-mode@<hostname>`. Matching the
+    # trailing word covers all our pubkeys regardless of fingerprint.
+    - name: Remove GOD pubkey (POSIX authorized_keys)
+      ansible.builtin.raw: |
+        AK=~/.ssh/authorized_keys
+        if [ -f "$AK" ]; then
+          grep -vE ' god-mode@[A-Za-z0-9._-]+$' "$AK" > "$AK.tmp" || true
+          mv "$AK.tmp" "$AK"
+          chmod 600 "$AK"
+        fi
+      changed_when: false
+      failed_when: false
+      when: meta.god_os in ['linux','macos']
+
+    # --- Remove pubkey (OpenWrt dropbear) --------------------------------
+    - name: Remove GOD pubkey (OpenWrt dropbear)
+      ansible.builtin.raw: |
+        AK=/etc/dropbear/authorized_keys
+        if [ -f "$AK" ]; then
+          grep -vE ' god-mode@[A-Za-z0-9._-]+$' "$AK" > "$AK.tmp" || true
+          mv "$AK.tmp" "$AK"
+        fi
+      changed_when: false
+      failed_when: false
+      when: meta.god_os == 'busybox'
+
+    # --- Remove pubkey (Windows) -----------------------------------------
+    - name: Remove GOD pubkey (Windows authorized_keys)
+      ansible.builtin.raw: |
+        powershell -NoProfile -Command "
+          $ErrorActionPreference='SilentlyContinue';
+          $paths = @('C:\ProgramData\ssh\administrators_authorized_keys', (Join-Path $HOME '.ssh\authorized_keys'));
+          foreach ($p in $paths) {
+            if (Test-Path $p) {
+              (Get-Content $p) | Where-Object { $_ -notmatch ' god-mode@[A-Za-z0-9._-]+$' } | Set-Content $p;
+            }
+          }
+        "
+      changed_when: false
+      failed_when: false
+      when: meta.god_os == 'windows'
+
+    # --- Remove agent binary (POSIX) -------------------------------------
+    - name: Remove agent file (POSIX)
+      ansible.builtin.raw: |
+        DEST="{{ agent_dest | trim }}"
+        rm -f "$DEST" 2>/dev/null || true
+      changed_when: false
+      failed_when: false
+      when: meta.god_os in ['linux','busybox','macos']
+
+    # --- Remove agent binary (Windows) -----------------------------------
+    - name: Remove agent file (Windows)
+      ansible.builtin.raw: |
+        powershell -NoProfile -Command "
+          $ErrorActionPreference='SilentlyContinue';
+          Remove-Item -Force 'C:\ProgramData\god-mode\god-agent.ps1';
+          Remove-Item -Force -Recurse 'C:\ProgramData\god-mode' -ErrorAction SilentlyContinue;
+        "
+      changed_when: false
+      failed_when: false
+      when: meta.god_os == 'windows'
+
+    - name: Report result
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: pubkey + agent removal attempted ({{ meta.god_os }})"
