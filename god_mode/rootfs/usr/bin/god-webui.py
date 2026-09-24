@@ -399,6 +399,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
     <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin:0.6rem 0">
       <button onclick="redFiltro('sin_aprobar')">Sin aprobar</button>
       <button onclick="redFiltro('vivos')">Vivos</button>
+      <button onclick="redFiltro('sin_tipo')">Sin tipo</button>
       <button onclick="redFiltro('fantasmas')">Nunca vistos</button>
       <button onclick="redFiltro('todo')">Todo</button>
       <input id="red-buscar" placeholder="filtrar…" oninput="redPinta()"
@@ -408,7 +409,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
       <table id="red-tabla">
         <thead><tr>
           <th>IP</th><th>Nombre</th><th>Dónde</th><th>Descripción</th>
-          <th>Perfil</th><th>Estado</th><th>Acciones</th>
+          <th>Tipo</th><th>Perfil</th><th>Estado</th><th>Acciones</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -633,10 +634,15 @@ function sparkline(points, w, h, color) {
 // ============================ REGISTRO DE RED ============================
 // Proxy a la API de la LXC 104. El token lo pone el addon del lado del
 // servidor (ver proxy_red), asi que aqui nunca aparece.
-let redDatos = [], redFiltroActual = 'sin_aprobar';
+let redDatos = [], redFiltroActual = 'sin_aprobar', redTipos = [];
 
 async function cargarRed() {
   $('red-stats').textContent = 'cargando…';
+  // La taxonomia vive en la API, no duplicada aqui: anadir un tipo alli lo
+  // hace aparecer en estos desplegables sin tocar el addon.
+  if (!redTipos.length) {
+    try { redTipos = (await (await fetch('api/red/tipos')).json()).tipos || []; } catch (e) {}
+  }
   try {
     const r = await fetch('api/red/dispositivos?filtro=' + redFiltroActual);
     const d = await r.json();
@@ -648,7 +654,9 @@ async function cargarRed() {
     }
     redDatos = d.dispositivos || [];
     const sinAprobar = redDatos.filter(x => x.estado !== 'aprobado').length;
-    $('red-stats').textContent = redDatos.length + ' aparatos · ' + sinAprobar + ' sin aprobar · filtro: ' + redFiltroActual;
+    const sinTipo = redDatos.filter(x => !x.tipo).length;
+    $('red-stats').textContent = redDatos.length + ' aparatos · ' + sinAprobar +
+      ' sin aprobar · ' + sinTipo + ' sin tipo · filtro: ' + redFiltroActual;
     redPinta();
   } catch (e) {
     $('red-stats').innerHTML = '<span class="ko">' + escapeHtml(String(e)) + '</span>';
@@ -675,6 +683,7 @@ function redPinta() {
       '<td>' + escapeHtml(x.nombre_efectivo || x.hostname || '—') + '</td>' +
       '<td class="muted">' + escapeHtml(donde) + '</td>' +
       '<td>' + desc + debil + '</td>' +
+      '<td>' + redSelectTipo(m, x.tipo) + '</td>' +
       '<td>' + escapeHtml(x.perfil || '—') + '</td>' +
       '<td>' + (x.estado === 'aprobado' ? '<span class="ok">aprobado</span>' : escapeHtml(x.estado || '')) + '</td>' +
       '<td style="white-space:nowrap">' +
@@ -684,6 +693,16 @@ function redPinta() {
         '<button onclick="redReservar(\'' + m + '\',\'' + escapeHtml(ip) + '\')" title="reservar IP fija">📌</button>' +
       '</td></tr>';
   }).join('');
+}
+
+// Desplegable en la propia fila. Clasificar 180 aparatos con un prompt por
+// aparato es justo la friccion que hizo abandonar el enrollment anterior.
+function redSelectTipo(mac, actual) {
+  const ops = ['<option value="">—</option>'].concat(
+    redTipos.map(t => '<option value="' + t + '"' +
+      (t === actual ? ' selected' : '') + '>' + t + '</option>'));
+  return '<select class="tipo-sel" onchange="redAccion(\'' + mac +
+         '\',{tipo:this.value})">' + ops.join('') + '</select>';
 }
 
 async function redAccion(mac, cuerpo) {
