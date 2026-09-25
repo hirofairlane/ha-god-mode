@@ -21,8 +21,9 @@
 #  for a weekly report 6h is plenty).
 # =====================================================================
 from __future__ import annotations
-import json
+
 import importlib.util
+import json
 from pathlib import Path
 
 _HERE = Path(__file__).parent
@@ -96,18 +97,18 @@ def _parse_reboot(lines: list[str]) -> tuple[bool, str]:
         return False, ""
     first = lines[0].strip().lower()
     yes = first.startswith("yes")
-    detail = " ".join(l.strip() for l in lines if l.strip())[:300]
+    detail = " ".join(ln.strip() for ln in lines if ln.strip())[:300]
     return yes, detail
 
 
 def _parse_services_failed(lines: list[str]) -> list[str]:
     out: list[str] = []
     for line in lines:
-        l = line.strip()
-        if not l or l.startswith("(no "):
+        ln = line.strip()
+        if not ln or ln.startswith("(no "):
             continue
         # systemctl --failed --no-legend format: "UNIT  LOAD  ACTIVE  SUB  DESCRIPTION"
-        first = l.split()[0]
+        first = ln.split()[0]
         if first.endswith(".service") or first.endswith(".timer") or "." in first:
             out.append(first)
     return out[:30]
@@ -116,20 +117,20 @@ def _parse_services_failed(lines: list[str]) -> list[str]:
 def _parse_journal(lines: list[str]) -> list[str]:
     out: list[str] = []
     for line in lines:
-        l = line.rstrip()
-        if not l or l.startswith("(no "):
+        ln = line.rstrip()
+        if not ln or ln.startswith("(no "):
             continue
-        out.append(l[:240])
+        out.append(ln[:240])
     return out[-30:]
 
 
 def _parse_docker(lines: list[str]) -> list[str]:
     out: list[str] = []
     for line in lines:
-        l = line.rstrip()
-        if not l or l.startswith("(no "):
+        ln = line.rstrip()
+        if not ln or ln.startswith("(no "):
             continue
-        out.append(l[:160])
+        out.append(ln[:160])
     return out[:60]
 
 
@@ -150,9 +151,9 @@ def _parse_mem(lines: list[str]) -> dict:
     #   "              total        used        free      shared  buff/cache   available"
     #   "Mem:          15999       8000       2000        100        5999       6000"
     for line in lines:
-        l = line.strip()
-        if l.lower().startswith("mem:"):
-            f = l.split()
+        ln = line.strip()
+        if ln.lower().startswith("mem:"):
+            f = ln.split()
             try:
                 return {
                     "total_mb": int(f[1]),
@@ -160,7 +161,7 @@ def _parse_mem(lines: list[str]) -> dict:
                     "free_mb":  int(f[3]) if len(f) > 3 else None,
                 }
             except (ValueError, IndexError):
-                return {"raw": l}
+                return {"raw": ln}
     return {}
 
 
@@ -168,14 +169,14 @@ def _parse_smart(lines: list[str]) -> list[dict]:
     out: list[dict] = []
     current: dict | None = None
     for line in lines:
-        l = line.rstrip()
-        if l.startswith("--- "):
+        ln = line.rstrip()
+        if ln.startswith("--- "):
             # "--- /dev/sda ---"
             if current is not None:
                 out.append(current)
-            current = {"device": l.strip(" -"), "lines": []}
-        elif current is not None and l.strip():
-            current["lines"].append(l.strip()[:160])
+            current = {"device": ln.strip(" -"), "lines": []}
+        elif current is not None and ln.strip():
+            current["lines"].append(ln.strip()[:160])
     if current is not None:
         out.append(current)
     return out[:8]
