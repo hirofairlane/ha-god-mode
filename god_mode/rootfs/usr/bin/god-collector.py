@@ -18,26 +18,39 @@
 from __future__ import annotations
 
 import http.server
-import json
-import os
-import socketserver
-import subprocess
-import sys
-import threading
-import time
-from pathlib import Path
 
 # Sibling modules god-{discover,updates,audit}.py — filenames with a dash,
 # can't `import` directly, so we go through importlib.util.
 import importlib.util as _ilu
-def _load_sibling(modname: str, path: str):
-    spec = _ilu.spec_from_file_location(modname, path)
-    mod = _ilu.module_from_spec(spec)  # type: ignore[arg-type]
-    spec.loader.exec_module(mod)       # type: ignore[union-attr]
-    return mod
-god_discover = _load_sibling("god_discover", "/usr/bin/god-discover.py")
-god_updates  = _load_sibling("god_updates",  "/usr/bin/god-updates.py")
-god_audit    = _load_sibling("god_audit",    "/usr/bin/god-audit.py")
+import json
+import os
+import socketserver
+import subprocess
+import threading
+import time
+from pathlib import Path
+
+
+def _load_sibling(modname: str, nombre_fichero: str):
+    """Carga un modulo hermano buscandolo PRIMERO junto a este fichero.
+
+    Antes se apuntaba directo a /usr/bin/..., que solo existe dentro del
+    contenedor: fuera de el la importacion reventaba, y eso deja el modulo
+    sin poder testearse (regla 1 del estandar de QA).
+    """
+    for candidato in (Path(__file__).resolve().parent / nombre_fichero,
+                      Path("/usr/bin") / nombre_fichero):
+        if candidato.exists():
+            spec = _ilu.spec_from_file_location(modname, candidato)
+            mod = _ilu.module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(mod)       # type: ignore[union-attr]
+            return mod
+    raise FileNotFoundError(nombre_fichero)
+
+
+god_discover = _load_sibling("god_discover", "god-discover.py")
+god_updates  = _load_sibling("god_updates",  "god-updates.py")
+god_audit    = _load_sibling("god_audit",    "god-audit.py")
 
 DATA_DIR     = Path(os.environ.get("GOD_DATA_DIR", "/data"))
 METRICS_DIR  = DATA_DIR / "metrics"
@@ -173,11 +186,12 @@ def load_metrics_from_disk() -> dict[str, dict]:
     inv     = load_inventory_meta()
     def _inject_inv(name: str, entry: dict) -> None:
         m = inv.get(name) or {}
-        if m.get("addr"): entry["addr"] = m["addr"]
-        if m.get("user"): entry["user"] = m["user"]
-        if m.get("port"): entry["port"] = m["port"]
-        if "_pve_token_id" in m: entry["_pve_token_id"] = m["_pve_token_id"]
-        if "_pve_token_configured" in m: entry["_pve_token_configured"] = m["_pve_token_configured"]
+        for clave in ("addr", "user", "port"):
+            if m.get(clave):
+                entry[clave] = m[clave]
+        for clave in ("_pve_token_id", "_pve_token_configured"):
+            if clave in m:
+                entry[clave] = m[clave]
     # Include even hosts that haven't replied yet, so the dashboard can
     # render them as offline.
     for name, cat in cats.items():
@@ -277,7 +291,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         - Rejects unknown hosts with 404 (host must exist in inventory).
         - Catches uncaught exceptions in the wrapper and returns 500.
         """
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import parse_qs, urlparse
         u = urlparse(self.path)
         host = u.path.rsplit("/", 1)[-1]
         qs = parse_qs(u.query)
@@ -355,7 +369,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # Combined view: gather metrics from CACHE + discover + updates +
             # audit. Returns whatever succeeds; each section carries its
             # own status (200/202/503) so the consumer can decide.
-            from urllib.parse import urlparse, parse_qs
+            from urllib.parse import parse_qs, urlparse
             u = urlparse(self.path)
             host = u.path.rsplit("/", 1)[-1]
             qs = parse_qs(u.query)

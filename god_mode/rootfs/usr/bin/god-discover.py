@@ -12,6 +12,7 @@
 #  Pure stdlib — invoked from god-collector.py.
 # =====================================================================
 from __future__ import annotations
+
 import errno
 import json
 import os

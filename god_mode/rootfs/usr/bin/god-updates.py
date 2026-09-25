@@ -16,8 +16,9 @@
 #  Cache TTL: 6h (updates change slowly, polling too often wastes time).
 # =====================================================================
 from __future__ import annotations
-import json
+
 import importlib.util
+import json
 from pathlib import Path
 
 # Sibling import (filename has a dash so we go through importlib.util).
