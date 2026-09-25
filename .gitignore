@@ -10,3 +10,7 @@ __pycache__/
 .ruff_cache/
 htmlcov/
 .venv/
+
+# La base de datos del registro es estado, no fuente (ver registro-red/README).
+red.db
+red.db.bak-*
