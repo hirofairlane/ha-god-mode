@@ -1,7 +1,7 @@
 ---
 name: GOD Mode
 slug: god_mode
-version: "0.4.10"
+version: "0.4.11"
 description: >-
   Centralized homelab control plane for Home Assistant. Aggregated
   monitoring of Linux hosts, Proxmox cluster (with auto-discovery of
@@ -13,13 +13,10 @@ arch:
   - aarch64
 init: false
 startup: services
-boot: auto
 hassio_api: true
 hassio_role: manager
 homeassistant_api: true
-host_network: false
 ingress: true
-ingress_port: 8099
 panel_icon: mdi:eye-outline
 panel_title: GOD Mode
 ports:
