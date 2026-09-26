@@ -57,12 +57,12 @@ jobs:
       - name: ansible-lint on playbooks
         run: ansible-lint god_mode/rootfs/usr/share/god-mode/ansible/playbooks/ || true
 
-  # ── Official Home Assistant add-on config linter (advisory: this 3rd-party
-  #    linter is opinionated and may flag legit local-build configs; it informs
-  #    but does not gate the build). ──
+  # ── Linter oficial de configuración de add-ons. Estuvo en modo consultivo
+  #    porque fallaba, y un job en rojo que nadie mira deja de informar de
+  #    nada. Lo que se quejaba eran tres claves puestas a su valor por
+  #    defecto; quitadas, pasa. Ahora bloquea, para que siga pasando. ──
   addon-lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Home Assistant add-on linter
