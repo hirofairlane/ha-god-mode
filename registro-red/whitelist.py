@@ -57,17 +57,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from config import CONFIG  # noqa: E402
 from red_db_lib import abrir  # noqa: E402
 
-# Nombre -> IP. La Caseta entra por un enlace de radio y no siempre responde;
-# se intenta igual, y si no contesta se dice y se sigue con los demas.
-ROUTERS = {
-    "Principal": "192.168.1.1",
-    "Salon":     "192.168.1.21",
-    "Sotano":    "192.168.1.22",
-    "Arriba":    "192.168.1.23",
-    "Caseta":    "192.168.1.24",
-}
+# Nombre -> IP, desde infra.local.json. Algun AP puede entrar por un enlace de
+# radio y no siempre responder; se intenta igual, y si no contesta se dice y
+# se sigue con los demas.
+ROUTERS = CONFIG["access_points"]
 
 MAC_OK = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 

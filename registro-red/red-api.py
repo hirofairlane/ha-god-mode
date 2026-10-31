@@ -25,10 +25,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from config import CONFIG
 from red_db_lib import abrir, ahora
 
 PUERTO = 9877
-ROUTER = "root@192.168.1.1"
+ROUTER = CONFIG["router"]
 TOKEN = Path("/etc/red-api.token")
 MAC_OK = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 IP_OK = re.compile(r"^192\.168\.[01]\.\d{1,3}$")

@@ -1,7 +1,7 @@
 ---
 name: GOD Mode
 slug: god_mode
-version: "0.4.11"
+version: "0.4.12"
 description: >-
   Centralized homelab control plane for Home Assistant. Aggregated
   monitoring of Linux hosts, Proxmox cluster (with auto-discovery of
@@ -27,47 +27,23 @@ map:
   - addon_config:rw
   - homeassistant_config:rw
 options:
-  # Registro de red (INFRA/red-registro.md). Corre fuera del addon, en la
-  # LXC 104: tiene las llaves SSH de los routers y sigue en pie aunque Home
-  # Assistant no lo este. Dejar el token vacio desactiva la vista sin romper nada.
+  # Network registry (optional companion service, see registro-red/README).
+  # Runs outside the addon: it holds the SSH keys to the routers and stays
+  # up even if Home Assistant doesn't. Leaving the token empty just disables
+  # the "Network" view without breaking anything else.
   red_api_url: "http://192.168.1.2:9877"
   red_api_token: ""
   poll_interval: 60
   pve_sync_interval: 300
   ssh_user: root
   install_packages: true
+  # Example inventory — replace with your own hosts. See the addon README
+  # for the full schema (category, parent, mac, pve_token_id, ...).
   hosts:
-    # ---- Proxmox cluster nodes ----
-    # If pve_token_id+pve_token_secret are set, the addon will auto-discover
-    # VMs/LXCs running on this node via the Proxmox API and surface them
-    # under the node's dashboard view (including stopped guests).
-    - { name: zeratul,           addr: 192.168.1.10, user: root,   category: pve_node,
+    - { name: example_pve_node, addr: 192.168.1.10, user: root, category: pve_node,
         pve_token_id: "god@pve!godmode", pve_token_secret: "" }
-    - { name: h340,              addr: 192.168.1.13, user: root,   category: pve_node, mac: "aa:aa:aa:aa:aa:10",
-        pve_token_id: "god@pve!godmode", pve_token_secret: "" }
-    - { name: observer,          addr: 192.168.1.14, user: root,   category: pve_node,
-        pve_token_id: "god@pve!godmode", pve_token_secret: "" }
-    # ---- Linux servers (VMs/CTs you want monitored over SSH in addition
-    #      to the API-level info their parent pve_node already exposes) ----
-    - { name: plex,              addr: 192.168.1.11, user: root,   category: server,        parent: zeratul }
-    - { name: frigate,           addr: 192.168.1.12, user: sergio, category: server,        parent: observer }
-    - { name: crafty,            addr: 192.168.1.15,  user: root,   category: server,        parent: zeratul }
-    - { name: jarvis,            addr: 192.168.1.2,  user: root,   category: server,        parent: zeratul }
-    # ---- RPi / SBCs ----
-    # Note: pikvm has a read-only filesystem; agent writes to tmpfs only.
-    - { name: pikvm,             addr: 192.168.1.16, user: root,   category: rpi, chip: pikvm }
-    # ---- Linux desktops ----
-    - { name: manjaro_desktop,   addr: 192.168.1.17, user: sergio, category: desktop_linux }
-    # Dual boot CachyOS + W11; RTX 5080 + 64GB; futuro nodo IA pesado.
-    # WoL-on-demand (no siempre encendido).
-    - { name: gigabyte_gaming,   addr: 192.168.1.18,  user: sergio, category: desktop_linux, mac: "aa:aa:aa:aa:aa:11" }
-    # iMac con Manjaro; desktop ocasional, casi siempre apagado.
-    - { name: imac101,           addr: 192.168.1.19, user: sergio, category: desktop_linux }
-    # ---- OpenWrt routers ----
-    - { name: openwrt_principal, addr: 192.168.1.1,   user: root,   category: openwrt }
-    - { name: openwrt_sotano,    addr: 192.168.1.22,   user: root,   category: openwrt }
-    - { name: openwrt_arriba,    addr: 192.168.1.23,   user: root,   category: openwrt }
-    - { name: openwrt_caseta,    addr: 192.168.1.24,   user: root,   category: openwrt, ssh_key_type: rsa }
+    - { name: example_server,   addr: 192.168.1.11, user: root, category: server, parent: example_pve_node }
+    - { name: example_router,   addr: 192.168.1.1,  user: root, category: openwrt }
 schema:
   red_api_url: str?
   red_api_token: password?

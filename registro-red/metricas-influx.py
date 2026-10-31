@@ -22,9 +22,10 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from config import CONFIG
 from red_db_lib import abrir
 
-INFLUX = "http://192.168.1.20:8086/write?db=homeassistant"
+INFLUX = CONFIG["influx_url"]
 
 
 def escribir(lineas: list[str]) -> int:

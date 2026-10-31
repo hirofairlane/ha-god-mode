@@ -80,14 +80,14 @@ pve:
   token_secret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
 hosts:
-  - name: zeratul
+  - name: pve_node
     addr: 192.168.1.10
     user: root
   - name: plex
     addr: 192.168.1.11
   - name: frigate
     addr: 192.168.1.12
-    user: sergio
+    user: media
     port: 22
 ```
 

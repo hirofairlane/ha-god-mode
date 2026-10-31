@@ -14,3 +14,7 @@ htmlcov/
 # La base de datos del registro es estado, no fuente (ver registro-red/README).
 red.db
 red.db.bak-*
+
+# Direcciones reales de la red local: nunca van al repo publico.
+registro-red/infra.local.json
+registro-red/infra.local.sh

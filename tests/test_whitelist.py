@@ -23,30 +23,30 @@ def wl():
     return mod
 
 
-# Salida real de `uci show wireless` del router del Sotano, recortada.
+# Forma real de una salida de `uci show wireless`, con MACs y SSID de ejemplo.
 SOTANO = """wireless.radio0=wifi-device
 wireless.wifinet0=wifi-iface
 wireless.wifinet0.device='radio0'
-wireless.wifinet0.ssid='virus'
+wireless.wifinet0.ssid='home-wifi'
 wireless.wifinet0.maclist='aa:aa:aa:aa:aa:01' 'aa:aa:aa:aa:aa:02'
 wireless.wifinet0.macfilter='deny'
 wireless.wifinet1.device='radio0'
-wireless.wifinet1.ssid='virus-legacy'
+wireless.wifinet1.ssid='home-wifi-legacy'
 wireless.wifinet1.macfilter='deny'
 """
 
-# El Salon: `bh5` es el enlace de radio con la caseta.
+# Un AP secundario: `bh5` es el enlace de radio (backhaul) con otro AP.
 SALON = """wireless.bh5=wifi-iface
 wireless.bh5.ssid='backhaul-5g'
 wireless.bh5.macfilter='allow'
 wireless.bh5.maclist='aa:aa:aa:aa:aa:03'
-wireless.wifinet0.ssid='virus'
+wireless.wifinet0.ssid='home-wifi'
 """
 
 
 def test_parsea_maclist_con_varios_valores(wl):
     s = wl.parsea_wireless(SOTANO)
-    assert s["wifinet0"]["ssid"] == "virus"
+    assert s["wifinet0"]["ssid"] == "home-wifi"
     assert s["wifinet0"]["maclist"] == ["aa:aa:aa:aa:aa:01", "aa:aa:aa:aa:aa:02"]
     assert s["wifinet0"]["macfilter"] == "deny"
 

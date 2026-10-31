@@ -18,8 +18,11 @@ from pathlib import Path
 
 import websockets
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from config import CONFIG
+
 BASE = Path(__file__).resolve().parent
-HA = "ws://192.168.1.20:8123/api/websocket"
+HA = CONFIG["ha_url"]
 
 
 async def registro(token: str) -> list:

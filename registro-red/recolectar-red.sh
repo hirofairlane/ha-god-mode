@@ -13,7 +13,12 @@
 # Se emiten lineas y no JSON a proposito: construir JSON a mano en bash con
 # bucles y subshells es fragil, y ya nos costo un fichero corrupto.
 set -u
-R=root@192.168.1.1
+
+# Real router/AP addresses live in infra.local.sh (gitignored). Copy
+# infra.example.sh to infra.local.sh and fill in your own.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$HERE/infra.local.sh" 2>/dev/null || source "$HERE/infra.example.sh"
 
 ssh -n -o ConnectTimeout=8 $R "cat /tmp/dhcp.leases 2>/dev/null" 2>/dev/null |
     awk '{print "LEASE\t" tolower($2) "\t" $3 "\t" $4}'
@@ -24,7 +29,7 @@ ssh -n -o ConnectTimeout=8 $R "uci show dhcp 2>/dev/null" 2>/dev/null |
     awk -F'\t' '{d[$1"|"$2]=$3; if(!($1 in seen)){orden[++n]=$1; seen[$1]=1}}
         END{for(i=1;i<=n;i++){k=orden[i]; m=d[k"|mac"]; if(m!="") print "STATIC\t" tolower(m) "\t" d[k"|ip"] "\t" d[k"|name"]}}'
 
-for r in 192.168.1.1:Principal 192.168.1.21:Salon 192.168.1.22:Sotano 192.168.1.23:Arriba 192.168.1.24:Caseta; do
+for r in $APS; do
     ip=${r%%:*}; ap=${r##*:}
     ssh -n -o ConnectTimeout=6 -o BatchMode=yes root@$ip "
         for i in \$(iw dev 2>/dev/null | grep Interface | awk '{print \$2}'); do
