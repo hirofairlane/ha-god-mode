@@ -104,7 +104,7 @@ smart_reallocated_max=0
 smart_health="unknown"
 if command -v smartctl >/dev/null 2>&1; then
     smart_health="PASSED"
-    # Iterar discos físicos (/dev/sd?, /dev/nvme?n?, etc)
+    # Iterate over physical disks (/dev/sd?, /dev/nvme?n?, etc)
     disks=$( { ls /dev/sd[a-z] /dev/nvme[0-9]n[0-9] 2>/dev/null || true; } | head -10)
     for d in $disks; do
         smart_disks_count=$((smart_disks_count + 1))

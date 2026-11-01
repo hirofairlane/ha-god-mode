@@ -85,9 +85,9 @@ def macs_bloqueadas() -> list[str]:
 
 
 def parsea_wireless(salida: str) -> dict[str, dict]:
-    """Convierte la salida de `uci show wireless` en sección -> opciones.
+    """Converts `uci show wireless` output into section -> options.
 
-    Funcion pura, para poder probarla sin routers delante.
+    A pure function, so it can be tested without routers in front of it.
     """
     secciones: dict[str, dict] = {}
     for linea in salida.splitlines():
@@ -111,7 +111,7 @@ def parsea_wireless(salida: str) -> dict[str, dict]:
 
 
 def gestionable(seccion: str, opciones: dict) -> tuple[bool, str]:
-    """¿Podemos escribir la maclist de esta interfaz? Y si no, por qué."""
+    """Can we write this interface's maclist? And if not, why."""
     if any(seccion.lower().startswith(p) for p in PREFIJOS_INTOCABLES):
         return False, "backhaul por nombre"
     if opciones.get("macfilter") == "allow":
@@ -122,11 +122,12 @@ def gestionable(seccion: str, opciones: dict) -> tuple[bool, str]:
 
 
 def planificar(secciones: dict[str, dict], bloqueadas: list[str]) -> dict[str, dict]:
-    """Qué habría que cambiar en cada sección. Función pura.
+    """What would need to change in each section. A pure function.
 
-    Devuelve seccion -> {ssid, faltan, sobran, gestionable, motivo}.
-    `sobran` son MAC que estan en el router y ya no estan bloqueadas en el
-    registro: se quitan, para que el filtro no se quede con basura vieja.
+    Returns section -> {ssid, faltan, sobran, gestionable, motivo}
+    (ssid, missing, extra, manageable, reason). `sobran` (extra) are MACs
+    that are on the router and no longer blocked in the registry: they get
+    removed, so the filter doesn't accumulate old junk.
     """
     plan: dict[str, dict] = {}
     for seccion, opciones in secciones.items():

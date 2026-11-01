@@ -83,7 +83,7 @@ automation:
         data:
           alert_id: "god_critical_summary"
           title: "🔴 GOD Mode CRITICAL"
-          message: "{{ n }} host(s) en estado crítico. Revisa el dashboard."
+          message: "{{ n }} host(s) in critical state. Check the dashboard."
 
   - id: god_alert_warning_count_changed
     alias: "GOD Mode: warning alert dispatcher"

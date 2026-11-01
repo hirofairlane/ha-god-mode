@@ -28,10 +28,10 @@ CFG_FILE    = DATA_DIR / "ansible" / "ansible.cfg"
 OPTS_FILE   = DATA_DIR / "options.json"
 COLLECTOR_URL = "http://localhost:9876"
 
-# Registro de red: API que corre en la LXC 104 (ver INFRA/red-registro.md).
-# Vive fuera del addon a proposito — tiene las llaves SSH de los routers y
-# sobrevive a que Home Assistant este caido, que es justo cuando interesa saber
-# que hay conectado. Aqui solo se hace de proxy.
+# Network registry: API that runs on a separate host (see INFRA/red-registro.md).
+# Lives outside the addon on purpose — it holds the routers' SSH keys and
+# survives Home Assistant being down, which is exactly when you want to know
+# what is connected. This addon only proxies to it.
 #
 # Ambas opciones son OPCIONALES: sin ellas la vista avisa y el addon arranca
 # igual. Nada se rompe por no configurarlas.
@@ -39,7 +39,7 @@ RED_API_URL_DEFAULT = "http://192.168.1.2:9877"
 
 
 def _red_api() -> tuple[str, str]:
-    """(url, token) del registro de red, leidos de las opciones del addon."""
+    """(url, token) for the network registry, read from the addon options."""
     try:
         o = json.loads(OPTS_FILE.read_text())
     except Exception:
@@ -48,10 +48,11 @@ def _red_api() -> tuple[str, str]:
 
 
 def proxy_red(path: str, method: str = "GET", cuerpo: bytes | None = None) -> tuple[int, bytes, str]:
-    """Proxy hacia el registro de red, anadiendo el token.
+    """Proxy to the network registry, adding the token.
 
-    El token no viaja al navegador: lo pone el addon aqui. Asi la pagina no
-    tiene que conocerlo y no queda expuesto en el HTML ni en el historial.
+    The token never reaches the browser: the addon adds it here. That way the
+    page doesn't need to know it and it never ends up exposed in the HTML or
+    history.
     """
     url, token = _red_api()
     req = urllib.request.Request(f"{url}{path}", data=cuerpo, method=method)
@@ -67,8 +68,8 @@ def proxy_red(path: str, method: str = "GET", cuerpo: bytes | None = None) -> tu
     except Exception as e:
         return 502, json.dumps({
             "error": str(e),
-            "pista": f"No responde {url}. Revisa red_api_url y red_api_token "
-                     f"en la configuracion del addon, y que red-api.service este activo en la LXC 104.",
+            "hint": f"{url} is not responding. Check red_api_url and red_api_token "
+                     f"in the addon configuration, and that red-api.service is running on the registry host.",
         }).encode(), "application/json"
 PLAYBOOKS = {
     "ping":                "/usr/share/god-mode/ansible/playbooks/ping.yml",
@@ -151,7 +152,7 @@ def sync_options_to_supervisor() -> tuple[bool, str]:
 
 
 INDEX_HTML = r"""<!DOCTYPE html>
-<html lang="es"><head>
+<html lang="en"><head>
 <meta charset="utf-8">
 <title>GOD Mode</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -301,12 +302,12 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <!-- =================== OVERVIEW =================== -->
 <section id="view-overview" class="view active">
   <div class="panel">
-    <h2>Resumen</h2>
-    <div class="row" id="ov-stats">(cargando…)</div>
+    <h2>Summary</h2>
+    <div class="row" id="ov-stats">(loading…)</div>
   </div>
   <div class="panel">
-    <h2>Hosts con problemas</h2>
-    <div id="ov-problems">(cargando…)</div>
+    <h2>Hosts with issues</h2>
+    <div id="ov-problems">(loading…)</div>
   </div>
 </section>
 
@@ -315,9 +316,9 @@ INDEX_HTML = r"""<!DOCTYPE html>
   <div class="panel">
     <h2>Hosts (<span id="hosts-count">0</span>)</h2>
     <div class="filter-bar">
-      <input id="hosts-filter" placeholder="filtrar por nombre o IP…" oninput="renderHosts()">
+      <input id="hosts-filter" placeholder="filter by name or IP…" oninput="renderHosts()">
       <select id="hosts-cat-filter" onchange="renderHosts()">
-        <option value="">todas las categorías</option>
+        <option value="">all categories</option>
       </select>
       <button class="secondary" onclick="actionPlaybook('gather')">🔬 Gather now</button>
       <button class="secondary" onclick="actionPlaybook('ping')">📡 Ping all</button>
@@ -344,12 +345,12 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <section id="view-proxmox" class="view">
   <div class="panel">
     <h2>Proxmox nodes</h2>
-    <p class="muted">VMs/LXCs descubiertos vía API por cada <code>pve_node</code> con token configurado. Incluye guests apagados.</p>
+    <p class="muted">VMs/LXCs discovered via API for each <code>pve_node</code> with a token configured. Includes stopped guests.</p>
     <div class="filter-bar">
       <button class="secondary" onclick="pveSyncNow()">🔄 Sync now</button>
       <span id="pve-status" class="muted"></span>
     </div>
-    <div id="pve-container">(cargando…)</div>
+    <div id="pve-container">(loading…)</div>
   </div>
 </section>
 
@@ -357,8 +358,8 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <section id="view-rpi" class="view">
   <div class="panel">
     <h2>RPi & SBC</h2>
-    <p class="muted">Equipos pequeños: RPi, NUCs, Orange Pi, PiKVM…</p>
-    <div id="rpi-container">(cargando…)</div>
+    <p class="muted">Small devices: RPi, NUCs, Orange Pi, PiKVM…</p>
+    <div id="rpi-container">(loading…)</div>
   </div>
 </section>
 
@@ -366,7 +367,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <section id="view-openwrt" class="view">
   <div class="panel">
     <h2>OpenWrt routers</h2>
-    <div id="openwrt-container">(cargando…)</div>
+    <div id="openwrt-container">(loading…)</div>
   </div>
 </section>
 
@@ -377,16 +378,16 @@ INDEX_HTML = r"""<!DOCTYPE html>
     <div id="host-meta" class="muted"></div>
   </div>
   <div class="panel">
-    <h2>Métricas actuales</h2>
+    <h2>Current metrics</h2>
     <div class="gauge-grid" id="host-gauges">(cargando…)</div>
   </div>
   <div class="panel">
-    <h2>Histórico (últimas 6h, in-memory)</h2>
-    <div id="host-charts">(cargando…)</div>
-    <p class="muted">Para histórico largo, consulta Grafana/InfluxDB.</p>
+    <h2>History (last 6h, in-memory)</h2>
+    <div id="host-charts">(loading…)</div>
+    <p class="muted">For long-term history, check Grafana/InfluxDB.</p>
   </div>
   <div class="panel">
-    <h2>Acciones</h2>
+    <h2>Actions</h2>
     <div id="host-actions"></div>
   </div>
 </section>
@@ -394,22 +395,22 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <!-- =================== RED =================== -->
 <section id="view-red" class="view">
   <div class="panel">
-    <h2>Registro de red</h2>
-    <p class="muted" id="red-stats">cargando…</p>
+    <h2>Network registry</h2>
+    <p class="muted" id="red-stats">loading…</p>
     <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin:0.6rem 0">
-      <button onclick="redFiltro('sin_aprobar')">Sin aprobar</button>
-      <button onclick="redFiltro('vivos')">Vivos</button>
-      <button onclick="redFiltro('sin_tipo')">Sin tipo</button>
-      <button onclick="redFiltro('fantasmas')">Nunca vistos</button>
-      <button onclick="redFiltro('todo')">Todo</button>
-      <input id="red-buscar" placeholder="filtrar…" oninput="redPinta()"
+      <button onclick="redFiltro('sin_aprobar')">Unapproved</button>
+      <button onclick="redFiltro('vivos')">Alive</button>
+      <button onclick="redFiltro('sin_tipo')">No type</button>
+      <button onclick="redFiltro('fantasmas')">Never seen</button>
+      <button onclick="redFiltro('todo')">All</button>
+      <input id="red-buscar" placeholder="filter…" oninput="redPinta()"
              style="flex:1;min-width:8rem">
     </div>
     <div style="overflow-x:auto">
       <table id="red-tabla">
         <thead><tr>
-          <th>IP</th><th>Nombre</th><th>Dónde</th><th>Descripción</th>
-          <th>Tipo</th><th>Perfil</th><th>Estado</th><th>Acciones</th>
+          <th>IP</th><th>Name</th><th>Where</th><th>Description</th>
+          <th>Type</th><th>Profile</th><th>State</th><th>Actions</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -421,7 +422,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <section id="view-onboard" class="view">
   <div class="panel">
     <h2>Onboard new host</h2>
-    <p class="muted">Añade un host. Si das password, el addon hace ssh-copy-id (transient), detect_os, install_agent y gather. Si no, asume que ya pegaste la pubkey manualmente.</p>
+    <p class="muted">Adds a host. If you give a password, the addon runs ssh-copy-id (transient), detect_os, install_agent and gather. If not, it assumes the pubkey is already pasted in manually.</p>
     <form id="onboard-form" onsubmit="onboardSubmit(event)">
       <div class="row">
         <div><label>Name (a-z0-9_)</label><input id="o-name" required pattern="^[a-z0-9_]+$" placeholder="myhost"></div>
@@ -437,9 +438,9 @@ INDEX_HTML = r"""<!DOCTYPE html>
           <option value="desktop_mac">desktop_mac</option>
           <option value="openwrt">openwrt</option>
         </select></div>
-        <div><label>Chip (opcional)</label><input id="o-chip" placeholder="rpi4, rpi5, nuc, orange_pi, pikvm…"></div>
-        <div><label>Parent pve_node (opcional)</label><input id="o-parent" placeholder="zeratul"></div>
-        <div><label>Password (one-time, no persiste)</label><input id="o-pass" type="password" placeholder="vacío si pubkey ya está"></div>
+        <div><label>Chip (optional)</label><input id="o-chip" placeholder="rpi4, rpi5, nuc, orange_pi, pikvm…"></div>
+        <div><label>Parent pve_node (optional)</label><input id="o-parent" placeholder="pve_node_name"></div>
+        <div><label>Password (one-time, not persisted)</label><input id="o-pass" type="password" placeholder="empty if pubkey is already set"></div>
       </div>
       <div style="margin-top:8px;">
         <label style="font-weight:normal;">
@@ -451,17 +452,17 @@ INDEX_HTML = r"""<!DOCTYPE html>
       <span id="onboard-status" class="muted"></span>
     </form>
   </div>
-  <p class="muted" style="font-size:0.8rem;">El resultado se muestra en el panel <b>Action log</b> fijo en la parte inferior de la pantalla (visible desde cualquier vista).</p>
+  <p class="muted" style="font-size:0.8rem;">The result shows in the <b>Action log</b> panel fixed at the bottom of the screen (visible from any view).</p>
 </section>
 
 <!-- =================== CONFIG =================== -->
 <section id="view-config" class="view">
   <div class="panel">
     <h2>SSH public key</h2>
-    <p class="muted">Pega esta clave en <code>~/.ssh/authorized_keys</code> de cada host a monitorear. (Persistida en <code>/homeassistant/god_mode/.ssh/</code>: sobrevive a reinstalación del addon.)</p>
-    <pre id="pubkey">cargando…</pre>
-    <button onclick="copyPubkey()" title="Copia la clave pública al portapapeles">📋 Copy key</button>
-    <button class="secondary" onclick="toggleInstallCmd()" title="Muestra un comando ssh listo para pegar en tu terminal: pide usuario+host y el wrapper instalará la pubkey en authorized_keys del destino">🛠 Comando para enrolar</button>
+    <p class="muted">Paste this key into <code>~/.ssh/authorized_keys</code> on each host to monitor. (Persisted in <code>/homeassistant/god_mode/.ssh/</code>: survives addon reinstalls.)</p>
+    <pre id="pubkey">loading…</pre>
+    <button onclick="copyPubkey()" title="Copy the public key to clipboard">📋 Copy key</button>
+    <button class="secondary" onclick="toggleInstallCmd()" title="Shows an ssh command ready to paste in your terminal: asks for user+host and the wrapper installs the pubkey in the target's authorized_keys">🛠 Command to enroll</button>
     <span id="copy-status" class="muted"></span>
     <div id="install-cmd-box" style="display:none; margin-top:0.6rem;">
       <div class="row" style="margin-bottom:0.4rem;">
@@ -469,32 +470,32 @@ INDEX_HTML = r"""<!DOCTYPE html>
         <div><label>Host / IP</label><input id="ic-host" placeholder="192.168.1.50"></div>
         <div><label>SSH port (opcional)</label><input id="ic-port" type="number" value="22"></div>
       </div>
-      <p class="muted">Pega esto en tu terminal local; te pedirá la password del host una sola vez:</p>
+      <p class="muted">Paste this in your local terminal; it will ask for the host's password once:</p>
       <pre id="install-cmd" style="white-space:pre-wrap;">_</pre>
-      <button onclick="copyInstallCmd()" title="Copia el comando al portapapeles">📋 Copy command</button>
+      <button onclick="copyInstallCmd()" title="Copy the command to clipboard">📋 Copy command</button>
       <span id="ic-status" class="muted"></span>
     </div>
   </div>
   <div class="panel">
-    <h2>Acciones globales</h2>
-    <p class="muted">Operaciones masivas sobre TODOS los hosts del inventario. Pueden tardar varios minutos. El resultado se muestra abajo.</p>
+    <h2>Global actions</h2>
+    <p class="muted">Bulk operations over ALL hosts in the inventory. Can take several minutes. The result shows below.</p>
     <button class="secondary" onclick="actionPlaybook('install_agent', null, 'global-out')"
-            title="Despliega o reinstala el agente god-agent en TODOS los hosts. Necesita que la pubkey ya esté en authorized_keys de cada uno. Equivalente a: ansible-playbook install_agent.yml">📦 Install agent on ALL</button>
+            title="Deploys or reinstalls the god-agent on ALL hosts. Needs the pubkey already in each one's authorized_keys. Equivalent to: ansible-playbook install_agent.yml">📦 Install agent on ALL</button>
     <button class="secondary" onclick="actionPlaybook('detect_os', null, 'global-out')"
-            title="Detecta el SO + arquitectura de cada host (cachea en /data/metadata/) para elegir agente correcto. Necesita SSH funcionando.">🔎 Detect OS on ALL</button>
+            title="Detects each host's OS + architecture (caches in /data/metadata/) to pick the right agent. Needs working SSH.">🔎 Detect OS on ALL</button>
     <button class="secondary" onclick="actionPlaybook('gather', null, 'global-out')"
-            title="Fuerza un poll inmediato de métricas de todos los hosts. Normalmente el collector lo hace cada poll_interval (default 60s).">🔬 Gather now</button>
+            title="Forces an immediate metrics poll of every host. Normally the collector does this every poll_interval (default 60s).">🔬 Gather now</button>
     <button class="secondary" onclick="actionPlaybook('ping', null, 'global-out')"
-            title="Ansible ping a todos los hosts. Diagnóstico rápido de conectividad SSH.">📡 Ping all</button>
+            title="Ansible ping to every host. Quick SSH connectivity check.">📡 Ping all</button>
     <button class="secondary" onclick="actionPlaybook('install_bastion_key', null, 'global-out')"
-            title="Propaga la pubkey del bastión (LXC 104, /data/secrets/bastion.pub) a authorized_keys de TODOS los hosts. Idempotente. Permite que Sergio y Jarvis lleguen a cualquier host a través del LXC 104 sin propagar claves personales.">🔑 Install bastion key on ALL</button>
+            title="Propagates the bastion pubkey (bastion host, /data/secrets/bastion.pub) to authorized_keys on ALL hosts. Idempotent. Lets the admin and any automation reach any host through the bastion without propagating personal keys.">🔑 Install bastion key on ALL</button>
     <button class="secondary" onclick="pveSyncNow('global-out')"
-            title="Lanza ya un god-pve-sync que consulta la API de cada pve_node con token configurado y refresca la lista de VMs/LXCs. Normalmente corre cada pve_sync_interval (default 5 min).">🔄 PVE sync now</button>
-    <p class="muted" style="font-size:0.8rem; margin-top:0.5rem;">Resultado en el panel <b>Action log</b> abajo (siempre visible).</p>
+            title="Runs a god-pve-sync right now, querying each pve_node's API with a token configured and refreshing the VM/LXC list. Normally runs every pve_sync_interval (default 5 min).">🔄 PVE sync now</button>
+    <p class="muted" style="font-size:0.8rem; margin-top:0.5rem;">Result in the <b>Action log</b> panel below (always visible).</p>
   </div>
   <div class="panel">
     <h2>Inventory (Ansible)</h2>
-    <pre id="inventory-view" style="max-height:400px;">cargando…</pre>
+    <pre id="inventory-view" style="max-height:400px;">loading…</pre>
   </div>
 </section>
 
@@ -506,13 +507,13 @@ INDEX_HTML = r"""<!DOCTYPE html>
     <b>Action log</b>
     <span id="dock-status" class="idle">idle</span>
     <span class="spacer"></span>
-    <span class="muted" id="dock-hint">click para abrir/cerrar</span>
+    <span class="muted" id="dock-hint">click to open/close</span>
     <button class="secondary" style="margin:0; padding:0.15rem 0.5rem;"
             onclick="event.stopPropagation(); clearLog()">clear</button>
     <span id="dock-toggle" style="font-size:1.1rem;">▲</span>
   </div>
   <div class="dock-body">
-    <pre id="log">(sin acciones aún)</pre>
+    <pre id="log">(no actions yet)</pre>
   </div>
 </div>
 
@@ -540,7 +541,7 @@ function $(id) { return document.getElementById(id); }
 function expandLog()    { $('dock').classList.add('open'); $('dock-toggle').textContent='▼'; }
 function collapseLog()  { $('dock').classList.remove('open'); $('dock-toggle').textContent='▲'; }
 function toggleLogDock() { $('dock').classList.contains('open') ? collapseLog() : expandLog(); }
-function clearLog() { setLog('(sin acciones aún)'); setLogStatus('idle','idle'); }
+function clearLog() { setLog('(no actions yet)'); setLogStatus('idle','idle'); }
 function setLogStatus(label, cls) {
   const s = $('dock-status');
   s.textContent = label;
@@ -631,15 +632,15 @@ function sparkline(points, w, h, color) {
 // ============================================================
 // Routing
 // ============================================================
-// ============================ REGISTRO DE RED ============================
-// Proxy a la API de la LXC 104. El token lo pone el addon del lado del
-// servidor (ver proxy_red), asi que aqui nunca aparece.
+// ============================ NETWORK REGISTRY ============================
+// Proxy to the registry host's API. The token is added server-side by the
+// addon (see proxy_red), so it never shows up here.
 let redDatos = [], redFiltroActual = 'sin_aprobar', redTipos = [];
 
 async function cargarRed() {
-  $('red-stats').textContent = 'cargando…';
-  // La taxonomia vive en la API, no duplicada aqui: anadir un tipo alli lo
-  // hace aparecer en estos desplegables sin tocar el addon.
+  $('red-stats').textContent = 'loading…';
+  // The taxonomy lives in the API, not duplicated here: adding a type there
+  // makes it show up in these dropdowns without touching the addon.
   if (!redTipos.length) {
     try { redTipos = (await (await fetch('api/red/tipos')).json()).tipos || []; } catch (e) {}
   }
@@ -648,15 +649,15 @@ async function cargarRed() {
     const d = await r.json();
     if (!r.ok || d.error) {
       $('red-stats').innerHTML = '<span class="ko">' + escapeHtml(d.error || 'error') + '</span>' +
-        (d.pista ? '<br><span class="muted">' + escapeHtml(d.pista) + '</span>' : '');
+        (d.hint ? '<br><span class="muted">' + escapeHtml(d.hint) + '</span>' : '');
       $('red-tabla').querySelector('tbody').innerHTML = '';
       return;
     }
     redDatos = d.dispositivos || [];
     const sinAprobar = redDatos.filter(x => x.estado !== 'aprobado').length;
     const sinTipo = redDatos.filter(x => !x.tipo).length;
-    $('red-stats').textContent = redDatos.length + ' aparatos · ' + sinAprobar +
-      ' sin aprobar · ' + sinTipo + ' sin tipo · filtro: ' + redFiltroActual;
+    $('red-stats').textContent = redDatos.length + ' devices · ' + sinAprobar +
+      ' unapproved · ' + sinTipo + ' no type · filter: ' + redFiltroActual;
     redPinta();
   } catch (e) {
     $('red-stats').innerHTML = '<span class="ko">' + escapeHtml(String(e)) + '</span>';
@@ -671,11 +672,11 @@ function redPinta() {
     JSON.stringify(x).toLowerCase().includes(q));
   $('red-tabla').querySelector('tbody').innerHTML = filas.map(x => {
     const ip = x.ip_efectiva || x.ip || '—';
-    const donde = x.ap ? (x.ap + '/' + (x.ssid || '')) : (x.vivo ? 'cable' : '—');
-    const desc = x.descripcion || '<span class="muted">sin identificar</span>';
-    // El aviso de descripcion debil importa: "identificado por fabricante" no
-    // es lo mismo que identificado, y confundirlos es lo que deja pasar cosas.
-    const debil = (x.descripcion && !x.firme) ? ' <span class="muted" title="identificación débil: sólo repite el fabricante">~</span>' : '';
+    const donde = x.ap ? (x.ap + '/' + (x.ssid || '')) : (x.vivo ? 'wired' : '—');
+    const desc = x.descripcion || '<span class="muted">unidentified</span>';
+    // The weak-identification flag matters: "identified by manufacturer" isn't
+    // the same as identified, and conflating the two is what lets things slip through.
+    const debil = (x.descripcion && !x.firme) ? ' <span class="muted" title="weak identification: only repeats the manufacturer">~</span>' : '';
     const res = x.tiene_reserva ? ('📌 ' + (x.ip_reservada || '')) : '';
     const m = x.mac;
     return '<tr>' +
@@ -685,7 +686,7 @@ function redPinta() {
       '<td>' + desc + debil + '</td>' +
       '<td>' + redSelectTipo(m, x.tipo) + '</td>' +
       '<td>' + escapeHtml(x.perfil || '—') + '</td>' +
-      '<td>' + (x.estado === 'aprobado' ? '<span class="ok">aprobado</span>' : escapeHtml(x.estado || '')) + '</td>' +
+      '<td>' + (x.estado === 'aprobado' ? '<span class="ok">approved</span>' : escapeHtml(x.estado || '')) + '</td>' +
       '<td style="white-space:nowrap">' +
         (x.estado === 'aprobado' ? '' : '<button onclick="redAccion(\'' + m + '\',{estado:\'aprobado\'})">✓</button> ') +
         '<button onclick="redDescribir(\'' + m + '\')" title="describir">✎</button> ' +
@@ -695,8 +696,8 @@ function redPinta() {
   }).join('');
 }
 
-// Desplegable en la propia fila. Clasificar 180 aparatos con un prompt por
-// aparato es justo la friccion que hizo abandonar el enrollment anterior.
+// In-row dropdown. Classifying ~180 devices with a prompt per device is
+// exactly the friction that killed the previous enrollment approach.
 function redSelectTipo(mac, actual) {
   const ops = ['<option value="">—</option>'].concat(
     redTipos.map(t => '<option value="' + t + '"' +
@@ -711,35 +712,35 @@ async function redAccion(mac, cuerpo) {
     body: JSON.stringify(cuerpo)
   });
   const d = await r.json();
-  if (!d.ok) alert('Error: ' + (d.mensaje || d.error || 'desconocido'));
+  if (!d.ok) alert('Error: ' + (d.mensaje || d.error || 'unknown'));
   cargarRed();
 }
 
 function redDescribir(mac) {
   const x = redDatos.find(v => v.mac === mac) || {};
-  const t = prompt('Descripción del aparato:', x.descripcion || '');
+  const t = prompt('Device description:', x.descripcion || '');
   if (t !== null) redAccion(mac, {descripcion: t});
 }
 
 function redPerfil(mac) {
-  const t = prompt('Perfil — pleno (internet), nube (depende del fabricante) o local (sin internet):', '');
+  const t = prompt('Profile — pleno (full internet), nube (cloud-only, vendor-dependent) or local (no internet):', '');
   if (t !== null && t !== '') redAccion(mac, {perfil: t.trim()});
 }
 
 async function redReservar(mac, ipActual) {
-  // Esto escribe una reserva estatica en el OpenWrt principal: es lo que evita
-  // que un aparato cambie de IP al renovar el DHCP.
-  const ip = prompt('Reservar IP fija para este aparato (escribe en el router):', ipActual !== '—' ? ipActual : '');
+  // This writes a static reservation on the main OpenWrt router: it's what
+  // stops a device from changing IP when its DHCP lease renews.
+  const ip = prompt('Reserve a static IP for this device (writes to the router):', ipActual !== '—' ? ipActual : '');
   if (!ip) return;
   const x = redDatos.find(v => v.mac === mac) || {};
-  const nombre = prompt('Nombre en el DHCP:', x.nombre_efectivo || x.hostname || '');
+  const nombre = prompt('Name in DHCP:', x.nombre_efectivo || x.hostname || '');
   if (nombre === null) return;
   const r = await fetch('api/red/reserva/' + mac, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ip: ip.trim(), nombre: nombre.trim()})
   });
   const d = await r.json();
-  alert(d.ok ? ('Reservada: ' + d.mensaje) : ('Error: ' + (d.mensaje || d.error)));
+  alert(d.ok ? ('Reserved: ' + d.mensaje) : ('Error: ' + (d.mensaje || d.error)));
   cargarRed();
 }
 
@@ -812,7 +813,7 @@ function renderOverview() {
     <div class="stat"><div class="label">Offline</div><div class="value ${offline>0?'ko':''}">${offline}</div></div>
     <div class="stat"><div class="label">Pending poll</div><div class="value ${pending>0?'warn':''}">${pending}</div></div>
     <div class="stat"><div class="label">Warnings</div><div class="value ${warn>0?'warn':''}">${warn}</div></div>
-    <div class="stat"><div class="label">Críticos</div><div class="value ${crit>0?'ko':''}">${crit}</div></div>
+    <div class="stat"><div class="label">Critical</div><div class="value ${crit>0?'ko':''}">${crit}</div></div>
     <div class="stat"><div class="label">PVE guests run</div><div class="value">${pveRun}/${pveTotal}</div></div>
   `;
   // Problemas (incluye offline + pending si total)
@@ -822,9 +823,9 @@ function renderOverview() {
     return cpu>80||mem>85||dk>85||tp>75;
   });
   if (probs.length === 0) {
-    $('ov-problems').innerHTML = '<p class="muted">✓ Todos los hosts OK, sin alertas.</p>';
+    $('ov-problems').innerHTML = '<p class="muted">✓ All hosts OK, no alerts.</p>';
   } else {
-    let html = '<table><thead><tr><th>host</th><th>categoría</th><th>problema</th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>host</th><th>category</th><th>issue</th></tr></thead><tbody>';
     probs.forEach(([n,m]) => {
       let issues = [];
       if (!m._ok) issues.push(m._error || 'fail');
@@ -930,12 +931,12 @@ function renderProxmox() {
       .filter(([n,m]) => m._category === 'pve_node')
       .sort((a,b) => a[0].localeCompare(b[0]));
     if (invNodes.length === 0) {
-      $('pve-container').innerHTML = '<p class="muted">No hay <code>pve_node</code> en el inventario. Onboardea uno con categoría <code>pve_node</code>.</p>';
+      $('pve-container').innerHTML = '<p class="muted">No <code>pve_node</code> in the inventory. Onboard one with category <code>pve_node</code>.</p>';
       return;
     }
     let html = `<div class="panel">
-      <h2>Proxmox sync no configurado</h2>
-      <p class="muted">El collector tiene <code>pve_token_id</code> pero falta el secret. Sin el secret, no se puede consultar la API de Proxmox para listar VMs/CTs por nodo.</p>
+      <h2>Proxmox sync not configured</h2>
+      <p class="muted">The collector has <code>pve_token_id</code> but is missing the secret. Without it, the Proxmox API can't be queried to list VMs/CTs per node.</p>
       <table>
         <thead><tr><th>node</th><th>IP</th><th>token id</th><th>secret</th><th>fix</th></tr></thead>
         <tbody>`;
@@ -943,7 +944,7 @@ function renderProxmox() {
       const tokenOk = m._pve_token_configured;
       const tokenId = m._pve_token_id || '(none)';
       const fix = tokenOk
-        ? '<span class="ok">configurado — espera al próximo pve-sync (5 min) o pulsa "PVE sync now" abajo</span>'
+        ? '<span class="ok">configured — wait for the next pve-sync (5 min) or click "PVE sync now" below</span>'
         : `<a href="#config">Configuration tab</a> → host <code>${n}</code> → <code>pve_token_secret: "&lt;UUID&gt;"</code>`;
       html += `<tr>
         <td><b>${escapeHtml(n)}</b></td>
@@ -955,9 +956,9 @@ function renderProxmox() {
     });
     html += `</tbody></table>
       <p class="muted" style="font-size:0.8rem; margin-top:0.7rem;">
-        Para obtener el UUID: en Proxmox UI → Datacenter → Permissions → API Tokens →
-        seleccionar <code>god@pve!godmode</code> → ver el secreto (solo se muestra una vez al crearlo).
-        Si lo perdiste, créalo de nuevo con role <code>PVEAuditor</code>.
+        To get the UUID: in the Proxmox UI → Datacenter → Permissions → API Tokens →
+        select <code>god@pve!godmode</code> → view the secret (only shown once, at creation).
+        If you lost it, create a new one with role <code>PVEAuditor</code>.
       </p>
     </div>`;
     $('pve-container').innerHTML = html;
@@ -974,8 +975,8 @@ function renderProxmox() {
     html += `<div class="pve-card">
       <h3>${n} <span class="muted">(${escapeHtml(s.addr)})</span></h3>
       <div class="meta">
-        estado <b>${ns.status||'?'}</b> · CPU ${ns.cpu_pct??'-'}% · RAM ${ns.mem_pct??'-'}% (${fmtBytes(ns.mem_used_b)}/${fmtBytes(ns.mem_max_b)}) ·
-        disco ${ns.disk_pct??'-'}% (${fmtBytes(ns.disk_used_b)}/${fmtBytes(ns.disk_max_b)}) ·
+        state <b>${ns.status||'?'}</b> · CPU ${ns.cpu_pct??'-'}% · RAM ${ns.mem_pct??'-'}% (${fmtBytes(ns.mem_used_b)}/${fmtBytes(ns.mem_max_b)}) ·
+        disk ${ns.disk_pct??'-'}% (${fmtBytes(ns.disk_used_b)}/${fmtBytes(ns.disk_max_b)}) ·
         uptime ${fmtUptime(ns.uptime_s)} ·
         guests: ${c.running||0}/${c.total||0} run (${c.vms||0} VM, ${c.lxcs||0} LXC)
       </div>
@@ -1004,7 +1005,7 @@ function renderProxmox() {
 function renderCategoryView(catName, containerId) {
   const rows = Object.entries(state.hosts).filter(([n,m]) => (m._category||'') === catName);
   if (rows.length === 0) {
-    $(containerId).innerHTML = `<p class="muted">Ningún host con categoría <code>${catName}</code>.</p>`;
+    $(containerId).innerHTML = `<p class="muted">No host in category <code>${catName}</code>.</p>`;
     return;
   }
   // VMs/CTs run inside a host whose temp is reported separately; OpenWrt
@@ -1038,7 +1039,7 @@ function renderOpenwrt() { renderCategoryView('openwrt', 'openwrt-container'); }
 async function renderHostDetail(name) {
   const m = state.hosts[name];
   if (!m) {
-    $('host-title').textContent = `Host '${name}' no encontrado`;
+    $('host-title').textContent = `Host '${name}' not found`;
     $('host-meta').textContent = '';
     $('host-gauges').innerHTML = '';
     $('host-charts').innerHTML = '';
@@ -1048,7 +1049,7 @@ async function renderHostDetail(name) {
   $('host-title').innerHTML = `<span class="cat-${m._category||'server'}">${escapeHtml(name)}</span>`;
   let metaParts = [
     `IP: <b>${escapeHtml(m.addr || '?')}</b>`,
-    `categoría: <span class="cat-${m._category||'?'}">${m._category||'?'}</span>`,
+    `category: <span class="cat-${m._category||'?'}">${m._category||'?'}</span>`,
   ];
   if (m._chip) metaParts.push(`chip: <code>${escapeHtml(m._chip)}</code>`);
   if (m._parent) metaParts.push(`parent: <a href="#host/${m._parent}">${m._parent}</a>`);
@@ -1142,11 +1143,11 @@ async function renderHostDetail(name) {
   $('host-actions').innerHTML = `
     <button onclick="actionPlaybook('gather','${name}')">🔬 Gather now</button>
     <button class="secondary" onclick="actionPlaybook('install_agent','${name}')">📦 Reinstall agent</button>
-    <button class="secondary" onclick="reprovisionHost('${name}')" title="Re-corre la cadena de aprovisionamiento (detect_os → install_agent → gather) en este host. Útil si el onboard inicial falló parcialmente y la pubkey ya está en el host.">🔁 Re-provision</button>
+    <button class="secondary" onclick="reprovisionHost('${name}')" title="Re-runs the provisioning chain (detect_os → install_agent → gather) on this host. Useful if the initial onboard failed partway and the pubkey is already on the host.">🔁 Re-provision</button>
     <button class="secondary" onclick="powerAction('wake','${name}')">⏻ WoL</button>
     <button class="secondary" onclick="powerAction('reboot','${name}')">↻ Reboot</button>
     <button class="danger" onclick="powerAction('shutdown','${name}')">⏼ Shutdown</button>
-    <button class="danger" onclick="deleteHost('${name}')" title="Quita el host del inventario y purga sus caches locales. Opcional: también limpia pubkey + agente del host remoto.">🗑 Delete host</button>
+    <button class="danger" onclick="deleteHost('${name}')" title="Removes the host from the inventory and purges its local caches. Optional: also cleans up the pubkey + agent on the remote host.">🗑 Delete host</button>
   `;
 }
 
@@ -1177,7 +1178,7 @@ function buildInstallCmd() {
   const portRaw = ($('ic-port').value || '22').trim();
   const port = parseInt(portRaw) || 22;
   const pub  = ($('pubkey').textContent || '').trim();
-  if (!pub || pub === 'cargando…') return '# wait for pubkey to load';
+  if (!pub || pub === 'loading…') return '# wait for pubkey to load';
   const sshOpts = (port !== 22) ? `-p ${port} ` : '';
   // Single-quoted remote payload: safe vs. local shell, escapes the
   // inner single quotes in the pubkey (the OpenSSH key never contains ')
@@ -1205,7 +1206,7 @@ function copyInstallCmd() {
 async function actionPlaybook(action, host /*, outId — ignored: always logs to dock now */) {
   const label = action + (host ? ' on ' + host : ' on ALL');
   await runWithLog(label, async (setLog, appendLog) => {
-    setLog(`Running ${label}…\n(puede tardar varios minutos para acciones masivas)\n`);
+    setLog(`Running ${label}…\n(can take several minutes for bulk actions)\n`);
     const url = 'api/action/' + action + (host ? ('?limit=' + encodeURIComponent(host)) : '');
     const r = await fetch(url, { method: 'POST' });
     const txt = await r.text();
@@ -1231,9 +1232,9 @@ async function reprovisionHost(host) {
   // remote. For password-based re-bootstrap, use Onboard form with force.
   if (!confirm(
     `Re-provision '${host}'?\n\n`+
-    `Re-corre: detect_os → install_agent → install_bastion_key → gather\n\n`+
-    `Requiere que la pubkey GOD ya esté en authorized_keys del host. `+
-    `Si no, usa el formulario Onboard con 'overwrite' + password.`
+    `Re-runs: detect_os → install_agent → install_bastion_key → gather\n\n`+
+    `Requires the GOD pubkey to already be in the host's authorized_keys. `+
+    `If not, use the Onboard form with 'overwrite' + password.`
   )) return;
   await runWithLog(`re-provision ${host}`, async (setLog, appendLog) => {
     setLog(`Re-provisioning ${host}…\n`);
@@ -1257,17 +1258,17 @@ async function reprovisionHost(host) {
 }
 async function deleteHost(host) {
   const typed = prompt(
-    `Esto va a borrar '${host}' del inventario, regenerar inventory.yml y purgar los caches locales.\n\n`+
-    `Escribe el nombre del host para confirmar:`
+    `This will delete '${host}' from the inventory, regenerate inventory.yml and purge the local caches.\n\n`+
+    `Type the host's name to confirm:`
   );
   if (typed !== host) {
-    if (typed !== null) alert(`Cancelado. Esperaba '${host}', escribiste '${typed}'.`);
+    if (typed !== null) alert(`Cancelled. Expected '${host}', got '${typed}'.`);
     return;
   }
   const purge = confirm(
-    `¿También limpiar el host remoto?\n\n`+
-    `OK  → SSH al host para borrar la pubkey de GOD Mode de authorized_keys y eliminar god-agent.\n`+
-    `Cancel → solo borrar local; la pubkey y el agente quedan en el host (puedes limpiarlos a mano).`
+    `Also clean up the remote host?\n\n`+
+    `OK  → SSH into the host to remove the GOD Mode pubkey from authorized_keys and uninstall god-agent.\n`+
+    `Cancel → only delete locally; the pubkey and agent stay on the host (you can clean them up by hand).`
   );
   await runWithLog(`delete ${host}`, async (setLog) => {
     setLog(`Deleting ${host} (purge_remote=${purge})…\n`);
@@ -1333,10 +1334,10 @@ async function onboardSubmit(ev) {
     if (r.status === 409 && !body.force) {
       setLog(txt);
       const ok = confirm(
-        `${body.name} ya existe en el inventario.\n\n`+
-        `¿Sobrescribir la entrada y re-correr el aprovisionamiento `+
-        `(bootstrap → ssh-copy-id si hay password → detect_os → install_agent → gather)?\n\n`+
-        `Los campos extra que el formulario no toca (mac, pve_token_*) se preservan.`
+        `${body.name} already exists in the inventory.\n\n`+
+        `Overwrite the entry and re-run provisioning `+
+        `(bootstrap → ssh-copy-id if a password is given → detect_os → install_agent → gather)?\n\n`+
+        `Extra fields the form doesn't touch (mac, pve_token_*) are preserved.`
       );
       if (!ok) {
         status.textContent = ' ✗ already exists (cancelled)';
