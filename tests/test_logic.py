@@ -78,6 +78,21 @@ def test_physical_flag_false_for_virtual_categories_even_without_parent(tmp_path
     assert col._es_fisico(categoria, False) is False
 
 
+def test_tls_context_none_when_disabled(tmp_path):
+    col = _collector(tmp_path)
+    (tmp_path / "options.json").write_text(json.dumps({"tls_enabled": False}))
+    assert col._tls_context() is None
+
+
+def test_tls_context_none_without_certs_even_if_enabled(tmp_path):
+    # tls_enabled=true but god-bootstrap.sh hasn't generated the cert yet
+    # (e.g. right after flipping the option, before a restart) — must not
+    # crash, just fall back to plain HTTP.
+    col = _collector(tmp_path)
+    (tmp_path / "options.json").write_text(json.dumps({"tls_enabled": True}))
+    assert col._tls_context() is None
+
+
 def test_load_metrics_marks_error_payload_not_ok(tmp_path):
     col = _collector(tmp_path)
     (tmp_path / "metrics").mkdir(parents=True)
@@ -202,6 +217,22 @@ def test_gen_package_empty_hosts_still_valid_yaml(tmp_path):
     gen = load_module("god-generate-yaml.py", data_dir=str(tmp_path))
     doc = yaml.safe_load(gen.gen_package([]))
     assert "rest" in doc
+
+
+def test_gen_package_tls_disabled_by_default(tmp_path):
+    yaml = importlib.import_module("yaml")
+    gen = load_module("god-generate-yaml.py", data_dir=str(tmp_path))
+    doc = yaml.safe_load(gen.gen_package([]))
+    assert doc["rest"][0]["resource"].startswith("http://")
+    assert "verify_ssl" not in doc["rest"][0]
+
+
+def test_gen_package_tls_enabled_uses_https_and_disables_verify(tmp_path):
+    yaml = importlib.import_module("yaml")
+    gen = load_module("god-generate-yaml.py", data_dir=str(tmp_path))
+    doc = yaml.safe_load(gen.gen_package([], tls_enabled=True))
+    assert doc["rest"][0]["resource"].startswith("https://")
+    assert doc["rest"][0]["verify_ssl"] is False
 
 
 # --------------------------------------------------------------------------- #

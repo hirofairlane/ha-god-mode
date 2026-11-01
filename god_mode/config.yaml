@@ -1,7 +1,7 @@
 ---
 name: GOD Mode
 slug: god_mode
-version: "0.4.12"
+version: "0.4.13"
 description: >-
   Centralized homelab control plane for Home Assistant. Aggregated
   monitoring of Linux hosts, Proxmox cluster (with auto-discovery of
@@ -37,6 +37,10 @@ options:
   pve_sync_interval: 300
   ssh_user: root
   install_packages: true
+  # Self-signed CA + cert for the collector API (:9876), generated into
+  # /data/pki on first start with this set to true. Off by default: the
+  # collector stays plain HTTP, same as every prior version.
+  tls_enabled: false
   # Example inventory — replace with your own hosts. See the addon README
   # for the full schema (category, parent, mac, pve_token_id, ...).
   hosts:
@@ -51,6 +55,7 @@ schema:
   pve_sync_interval: int(60,3600)?
   ssh_user: str
   install_packages: bool
+  tls_enabled: bool?
   hosts:
     - name: match(^[a-z0-9_]+$)
       addr: str

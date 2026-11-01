@@ -189,6 +189,45 @@ echo "${HOSTS_JSON}" | jq 'map({(.name): (.category // "uncategorized")}) | add'
 echo "${HOSTS_JSON}" | jq 'map(select(.chip)   | {(.name): .chip})   | add // {}' > "${INV_DIR}/chips.json"
 echo "${HOSTS_JSON}" | jq 'map(select(.parent) | {(.name): .parent}) | add // {}' > "${INV_DIR}/parents.json"
 
+# 7) Self-signed PKI for the collector API (opt-in: `tls_enabled` option).
+#    Lives entirely in /data/pki — never leaves the add-on's own storage,
+#    same backup-to-/homeassistant pattern as the SSH keypair so a reinstall
+#    doesn't silently swap the cert out from under anyone who's pinned it.
+PKI_DIR="${DATA}/pki"
+PKI_BACKUP_DIR="/homeassistant/god_mode/pki"
+TLS_ENABLED=$(jq -r '.tls_enabled // false' /data/options.json 2>/dev/null || echo "false")
+if [ "${TLS_ENABLED}" = "true" ]; then
+    mkdir -p "${PKI_DIR}"
+    if [ -f "${PKI_BACKUP_DIR}/ca.crt" ] && [ ! -f "${PKI_DIR}/ca.crt" ]; then
+        bashio::log.info "Restoring GOD Mode CA/cert from ${PKI_BACKUP_DIR}"
+        cp "${PKI_BACKUP_DIR}"/*.crt "${PKI_BACKUP_DIR}"/*.key "${PKI_DIR}/" 2>/dev/null || true
+    fi
+    if [ ! -f "${PKI_DIR}/ca.key" ] || [ ! -f "${PKI_DIR}/ca.crt" ]; then
+        bashio::log.info "Generating a new self-signed CA for GOD Mode's internal TLS"
+        openssl req -x509 -newkey ed25519 -days 3650 -noenc \
+            -keyout "${PKI_DIR}/ca.key" -out "${PKI_DIR}/ca.crt" \
+            -subj "/CN=GOD Mode local CA" >/dev/null 2>&1
+    fi
+    if [ ! -f "${PKI_DIR}/collector.key" ] || [ ! -f "${PKI_DIR}/collector.crt" ]; then
+        bashio::log.info "Issuing the collector's TLS leaf cert from the local CA"
+        openssl req -newkey ed25519 -noenc \
+            -keyout "${PKI_DIR}/collector.key" -out "${PKI_DIR}/collector.csr" \
+            -subj "/CN=god-mode-collector" >/dev/null 2>&1
+        openssl x509 -req -in "${PKI_DIR}/collector.csr" -days 825 \
+            -CA "${PKI_DIR}/ca.crt" -CAkey "${PKI_DIR}/ca.key" -CAcreateserial \
+            -out "${PKI_DIR}/collector.crt" >/dev/null 2>&1
+        rm -f "${PKI_DIR}/collector.csr"
+    fi
+    chmod 600 "${PKI_DIR}"/*.key 2>/dev/null || true
+    if mkdir -p "${PKI_BACKUP_DIR}" 2>/dev/null; then
+        cp -f "${PKI_DIR}"/*.key "${PKI_DIR}"/*.crt "${PKI_BACKUP_DIR}/" 2>/dev/null || true
+    fi
+    bashio::log.info "TLS enabled on the collector API. CA cert: ${PKI_DIR}/ca.crt"
+    bashio::log.info "Import that CA cert wherever you need to trust https://<addon host>:9876"
+else
+    bashio::log.info "tls_enabled is false — collector API stays plain HTTP (default)."
+fi
+
 bashio::log.info "Bootstrap complete. Inventory: ${INV_FILE}"
 bashio::log.info "Hosts configured: $(echo "${HOSTS_JSON}" | jq 'length')"
 bashio::log.info "Categories: $(echo "${CATEGORIES}" | tr '\n' ' ')"

@@ -16,6 +16,7 @@ ENV LANG=C.UTF-8 \
 #   openssh-client: claves + ssh remoto
 #   curl + jq: comprobaciones API + JSON munging en init scripts
 #   bash: bashio requiere bash
+#   openssl: self-signed CA + leaf cert for the collector's opt-in TLS
 RUN apk add --no-cache \
         openssh-client \
         openssh-keygen \
@@ -24,6 +25,7 @@ RUN apk add --no-cache \
         bash \
         sshpass \
         coreutils \
+        openssl \
     && pip install --no-cache-dir --break-system-packages \
         ansible-core==2.17.* \
         requests \
@@ -55,7 +57,7 @@ LABEL \
     io.hass.description="Centralized homelab monitoring (Linux + Proxmox)" \
     io.hass.arch="amd64|aarch64" \
     io.hass.type="addon" \
-    io.hass.version="0.4.12" \
+    io.hass.version="0.4.13" \
     maintainer="Sergio (hirofairlane)"
 
 EXPOSE 8099 9876

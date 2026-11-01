@@ -16,6 +16,7 @@ import http.server
 import json
 import os
 import socketserver
+import ssl
 import subprocess
 import sys
 import urllib.request
@@ -26,7 +27,30 @@ PUBKEY_FILE = DATA_DIR / ".ssh" / "id_ed25519.pub"
 INV_FILE    = DATA_DIR / "ansible" / "inventory.yml"
 CFG_FILE    = DATA_DIR / "ansible" / "ansible.cfg"
 OPTS_FILE   = DATA_DIR / "options.json"
-COLLECTOR_URL = "http://localhost:9876"
+PKI_DIR     = DATA_DIR / "pki"
+
+
+def _collector_url() -> str:
+    """http(s)://localhost:9876, matching whatever god-collector.py is
+    actually listening on. Both run in the same container, so this is
+    the one caller that needs to track `tls_enabled` directly rather
+    than going through the public red_api-style config."""
+    try:
+        tls = bool(json.loads(OPTS_FILE.read_text()).get("tls_enabled"))
+    except Exception:
+        tls = False
+    return "https://localhost:9876" if tls else "http://localhost:9876"
+
+
+def _collector_ssl_context():
+    """Trusts the add-on's own local CA for the internal collector call —
+    not the system trust store, since this cert is self-signed on
+    purpose (see /data/pki). None when TLS isn't in play, so callers can
+    pass it straight to urlopen(..., context=...) either way."""
+    ca = PKI_DIR / "ca.crt"
+    if not ca.exists():
+        return None
+    return ssl.create_default_context(cafile=str(ca))
 
 # Network registry: API that runs on a separate host (see INFRA/red-registro.md).
 # Lives outside the addon on purpose — it holds the routers' SSH keys and
@@ -130,7 +154,7 @@ def sync_options_to_supervisor() -> tuple[bool, str]:
     # Preserve only the keys defined in config.yaml schema; sending unknown
     # keys would make the Supervisor reject the whole payload.
     SCHEMA_KEYS = ("poll_interval", "pve_sync_interval", "ssh_user",
-                   "install_packages", "pve", "hosts")
+                   "install_packages", "tls_enabled", "pve", "hosts")
     payload = {k: full[k] for k in SCHEMA_KEYS if k in full}
     req = urllib.request.Request(
         f"{SUPERVISOR_URL}/addons/self/options",
@@ -1403,7 +1427,8 @@ setInterval(pollAll, 10000);
 
 def proxy_collector(path: str) -> tuple[int, bytes, str]:
     try:
-        with urllib.request.urlopen(f"{COLLECTOR_URL}{path}", timeout=5) as r:
+        with urllib.request.urlopen(f"{_collector_url()}{path}", timeout=5,
+                                     context=_collector_ssl_context()) as r:
             return r.status, r.read(), r.headers.get_content_type() or "application/json"
     except Exception as e:
         return 502, json.dumps({"error": str(e)}).encode(), "application/json"
@@ -1639,7 +1664,8 @@ def onboard_host(payload: dict) -> tuple[int, str]:
     # "ansible ran without error but the agent never replied").
     log_lines.append("\n=== final health check ===")
     try:
-        with urllib.request.urlopen(f"{COLLECTOR_URL}/api/hosts", timeout=10) as resp:
+        with urllib.request.urlopen(f"{_collector_url()}/api/hosts", timeout=10,
+                                     context=_collector_ssl_context()) as resp:
             all_hosts = json.loads(resp.read().decode("utf-8"))
         h = all_hosts.get(name) or {}
         if h.get("_ok"):

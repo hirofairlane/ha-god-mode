@@ -25,6 +25,7 @@ import importlib.util as _ilu
 import json
 import os
 import socketserver
+import ssl
 import subprocess
 import threading
 import time
@@ -63,6 +64,7 @@ PARENTS_FILE    = DATA_DIR / "ansible" / "parents.json"
 PVE_CHILDREN_DIR = DATA_DIR / "pve_children"
 PLAYBOOK     = "/usr/share/god-mode/ansible/playbooks/gather.yml"
 PUBKEY_FILE  = DATA_DIR / ".ssh" / "id_ed25519.pub"
+PKI_DIR      = DATA_DIR / "pki"
 
 LISTEN_HOST  = "0.0.0.0"
 LISTEN_PORT  = 9876
@@ -430,11 +432,33 @@ class ThreadingServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
 
 
+def _tls_context() -> ssl.SSLContext | None:
+    """None unless `tls_enabled` is set AND god-bootstrap.sh has already
+    generated /data/pki/collector.{crt,key} (it only does that when
+    tls_enabled is true, so a stale cert from a prior run can't make this
+    serve HTTPS unless the option is on right now too)."""
+    if not load_options().get("tls_enabled"):
+        return None
+    cert, key = PKI_DIR / "collector.crt", PKI_DIR / "collector.key"
+    if not (cert.exists() and key.exists()):
+        print(f"[god-collector] tls_enabled but no cert at {PKI_DIR} yet "
+              f"(bootstrap runs before this starts; falling back to HTTP)", flush=True)
+        return None
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
+    return ctx
+
+
 def main():
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=poll_loop, daemon=True).start()
     server = ThreadingServer((LISTEN_HOST, LISTEN_PORT), Handler)
-    print(f"[god-collector] listening on http://{LISTEN_HOST}:{LISTEN_PORT}", flush=True)
+    ctx = _tls_context()
+    scheme = "http"
+    if ctx is not None:
+        server.socket = ctx.wrap_socket(server.socket, server_side=True)
+        scheme = "https"
+    print(f"[god-collector] listening on {scheme}://{LISTEN_HOST}:{LISTEN_PORT}", flush=True)
     print(f"[god-collector] inventory={INV_FILE}, playbook={PLAYBOOK}", flush=True)
     server.serve_forever()
 

@@ -72,6 +72,7 @@ infrastructure. As an add-on the user gets:
 poll_interval: 60        # seconds between polling cycles (15-3600)
 ssh_user: root           # default user for hosts that don't override
 install_packages: true   # auto-write YAML to /config
+tls_enabled: false        # see "TLS for the collector API" below
 
 pve:
   enabled: true
@@ -90,6 +91,28 @@ hosts:
     user: media
     port: 22
 ```
+
+### TLS for the collector API
+
+`tls_enabled: false` is the default — the collector API (`:9876`) stays
+plain HTTP, exactly like every version before this option existed.
+
+Set it to `true` and restart the add-on to switch it on. On the next
+start, `god-bootstrap.sh` generates a self-signed CA and a leaf cert for
+the collector into `/data/pki/` (with a backup under
+`/homeassistant/god_mode/pki`, same survive-a-reinstall pattern as the
+SSH keypair) — nothing leaves the add-on's own storage, and no outside
+service or separate PKI stack is involved. The webui's own internal
+calls to the collector pick this up automatically (they trust that same
+local CA). Home Assistant's `rest:` sensor, generated into
+`/config/packages/god_hosts_linux.yaml`, switches to `https://` with
+`verify_ssl: false` — HA's `rest:` integration has no way to point at a
+custom CA bundle, only an on/off toggle, so that's the honest trade a
+self-signed cert makes there: the connection is encrypted, HA just isn't
+validating which cert it's encrypted with.
+
+Turning this off again leaves the existing cert in place (harmless) and
+the collector goes back to plain HTTP.
 
 ## Architecture
 
