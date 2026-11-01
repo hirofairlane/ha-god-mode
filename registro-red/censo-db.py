@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Pasada del censo contra la base de datos. Sustituye a censo-red.py.
+"""Runs the census pass against the database.
 
-Vivo = asociado a un AP ahora, O responde al ping. **Un lease no basta**: costo
-un diagnostico erroneo, porque la `orangepizero` figuro como viva nueve horas
-despues de ser expulsada de la wifi, con su lease aun vigente. Un lease dice
-"estuvo aqui hace poco", no "esta aqui".
+Alive = associated to an AP right now, OR answers a ping. **A lease isn't
+enough**: it cost us a wrong diagnosis once, when a rogue device showed up
+as alive nine hours after being kicked off the wifi, its lease still valid.
+A lease says "was here recently", not "is here".
 
-Registra en `avistamientos` **solo los cambios**. Anotar 74 aparatos cada 10
-minutos serian 10.000 filas diarias de ruido; anotar altas, apariciones,
-desapariciones y cambios de sitio da una linea temporal legible.
+Logs to `avistamientos` (sightings) **only the changes**. Logging ~75
+devices every 10 minutes would be 10,000 noisy rows a day; logging
+additions, appearances, disappearances and location changes gives a
+readable timeline instead.
 """
 from __future__ import annotations
 

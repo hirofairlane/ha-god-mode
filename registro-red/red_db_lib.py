@@ -1,4 +1,4 @@
-"""Funciones comunes de la base de datos de red."""
+"""Shared functions for the network registry's database."""
 from __future__ import annotations
 
 import os
@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
-# Configurable: si no, importar este modulo desde cualquier sitio crea una
-# `red.db` vacia al lado del fichero — pasa, por ejemplo, al ejecutar los
-# scripts desde el repositorio en vez de desde la copia desplegada.
+# Configurable: otherwise importing this module from anywhere creates an
+# empty `red.db` next to the file — which happens, for example, when
+# running the scripts from the git repo instead of the deployed copy.
 DB = Path(os.environ.get("RED_DB", BASE / "red.db"))
 
 ESQUEMA = """

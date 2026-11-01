@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
-"""Deduce el `tipo` de cada aparato a partir de lo que ya sabemos de el.
+"""Infers each device's `tipo` (type) from what the registry already knows.
 
-Por que existe: clasificar 180 aparatos a mano es exactamente la friccion que
-hizo abandonar el enrollment anterior. Las descripciones del censo ya dicen
-"Camara CCTV Hikvision" o "MacBook Pro de Sergio"; leerlas es gratis.
+Why this exists: classifying ~180 devices by hand is exactly the friction
+that killed the previous enrollment approach. The census descriptions
+already say things like "Hikvision CCTV camera" or "John's MacBook Pro";
+reading them is free.
 
-Dos reglas de diseno:
+Two design rules:
 
-- **Solo rellena lo que esta vacio.** Nunca pisa un tipo puesto a mano.
-- **Ante la duda, no inventa.** Lo que no encaja se queda en NULL y aparece en
-  el filtro `sin_tipo` de la interfaz, que es donde se repasa.
+- **Only fills in what's empty.** Never overwrites a type set by hand.
+- **When in doubt, doesn't guess.** Anything that doesn't fit stays NULL and
+  shows up in the UI's `sin_tipo` (no type) filter, which is where it gets
+  reviewed.
 
-El orden de las reglas importa: la primera que casa, gana. Por eso `camara` va
-antes que `impresora` (si no, "PrusaMiniCam" saldria impresora).
+Rule order matters: the first one that matches wins. That's why `camara`
+(camera) comes before `impresora` (printer) — otherwise a device named
+"PrusaMiniCam" would come out as a printer.
 
-Uso:
-    ./tipificar.py            # ensayo en seco, no toca nada
-    ./tipificar.py --aplicar  # escribe
+Usage:
+    ./tipificar.py            # dry run, touches nothing
+    ./tipificar.py --aplicar  # writes
 """
 from __future__ import annotations
 

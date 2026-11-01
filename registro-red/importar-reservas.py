@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Trae al registro TODAS las reservas del DHCP, incluidas las muertas.
+"""Imports ALL DHCP reservations into the registry, including stale ones.
 
-De las 173 entradas del router, 85 no tenian lease activo. Esas son justo las
-que Sergio no reconoce — restos de aparatos que se cambiaron, se configuraron
-una vez por cable o murieron hace anos. Ignorarlas es lo que hacia ilegible la
-tabla; listarlas explicitamente como "nunca vista" permite ir vaciandolas.
+Of the router's reservation entries, roughly half had no active lease. Those
+are exactly the ones nobody recognizes — leftovers from devices that got
+replaced, were set up once over a cable, or died years ago. Ignoring them is
+what made the table unreadable; explicitly listing them as "never seen"
+lets you work through them.
 
-Una reserva NO crea un dispositivo vivo: entra con `vivo=0` y estado
-`pendiente`. Si nunca se la ha visto, lo dice.
+A reservation does NOT create a live device: it's inserted with `vivo=0`
+and state `pendiente`. If it's never been seen, it says so.
 """
 from __future__ import annotations
 
