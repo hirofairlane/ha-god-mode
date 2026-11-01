@@ -56,6 +56,26 @@ def test_load_metrics_includes_unpolled_hosts_as_offline(tmp_path):
     assert out["zeratul"]["_ok"] is False
     assert out["zeratul"]["_error"] == "not_polled_yet"
     assert out["zeratul"]["_category"] == "pve_node"
+    assert out["zeratul"]["_physical"] is True  # a pve_node is the hypervisor itself
+
+
+def test_physical_flag_follows_category_and_parent(tmp_path):
+    col = _collector(tmp_path)
+    (tmp_path / "ansible").mkdir(parents=True)
+    (tmp_path / "ansible" / "categories.json").write_text(json.dumps({
+        "zeratul": "pve_node", "plex": "server", "desktop": "desktop_linux",
+    }))
+    (tmp_path / "ansible" / "parents.json").write_text(json.dumps({"plex": "zeratul"}))
+    out = col.load_metrics_from_disk()
+    assert out["zeratul"]["_physical"] is True    # the hypervisor: physical
+    assert out["plex"]["_physical"] is False      # has a parent: a VM/LXC guest
+    assert out["desktop"]["_physical"] is True     # no parent, not a pve guest category
+
+
+@pytest.mark.parametrize("categoria", ["pve_vm", "pve_lxc"])
+def test_physical_flag_false_for_virtual_categories_even_without_parent(tmp_path, categoria):
+    col = _collector(tmp_path)
+    assert col._es_fisico(categoria, False) is False
 
 
 def test_load_metrics_marks_error_payload_not_ok(tmp_path):

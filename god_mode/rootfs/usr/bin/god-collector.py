@@ -178,6 +178,21 @@ def load_inventory_meta() -> dict[str, dict]:
     return out
 
 
+# Categories that are always a VM/LXC guest regardless of whether `parent`
+# happens to be set (the inventory schema allows both, but only `parent`
+# is actually populated today — see `_physical` below).
+CATEGORIAS_VIRTUALES = ("pve_vm", "pve_lxc")
+
+
+def _es_fisico(categoria: str, tiene_parent: bool) -> bool:
+    """Whether this host is real hardware (or the Proxmox node itself) as
+    opposed to a VM/LXC guest. The inventory's one signal for "this runs
+    inside that other host" is the `parent` field — a host with a parent
+    is a guest, one without is physical. `_physical` makes that explicit
+    instead of making every caller re-derive it from `_parent`."""
+    return categoria not in CATEGORIAS_VIRTUALES and not tiene_parent
+
+
 def load_metrics_from_disk() -> dict[str, dict]:
     out = {}
     cats    = load_categories()
@@ -205,6 +220,7 @@ def load_metrics_from_disk() -> dict[str, dict]:
             out[name]["_chip"] = chips[name]
         if name in parents:
             out[name]["_parent"] = parents[name]
+        out[name]["_physical"] = _es_fisico(cat, name in parents)
         _inject_inv(name, out[name])
     if not METRICS_DIR.exists():
         return out
@@ -219,10 +235,13 @@ def load_metrics_from_disk() -> dict[str, dict]:
                 d["_chip"] = chips[name]
             if name in parents:
                 d["_parent"] = parents[name]
+            d["_physical"] = _es_fisico(d["_category"], name in parents)
             _inject_inv(name, d)
             out[name] = d
         except Exception as e:
-            err_entry = {"_ok": False, "_error": f"parse: {e}", "_category": cats.get(name, "uncategorized")}
+            cat = cats.get(name, "uncategorized")
+            err_entry = {"_ok": False, "_error": f"parse: {e}", "_category": cat,
+                         "_physical": _es_fisico(cat, name in parents)}
             _inject_inv(name, err_entry)
             out[name] = err_entry
     return out

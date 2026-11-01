@@ -320,6 +320,11 @@ INDEX_HTML = r"""<!DOCTYPE html>
       <select id="hosts-cat-filter" onchange="renderHosts()">
         <option value="">all categories</option>
       </select>
+      <select id="hosts-hw-filter" onchange="renderHosts()">
+        <option value="">physical + virtual</option>
+        <option value="physical">🖥 physical only</option>
+        <option value="virtual">📦 VM/LXC only</option>
+      </select>
       <button class="secondary" onclick="actionPlaybook('gather')">🔬 Gather now</button>
       <button class="secondary" onclick="actionPlaybook('ping')">📡 Ping all</button>
     </div>
@@ -327,6 +332,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
       <thead><tr>
         <th class="sortable" data-key="name">host</th>
         <th class="sortable" data-key="_category">cat</th>
+        <th class="sortable" data-key="_physical" title="physical hardware vs. a Proxmox VM/LXC guest">hw</th>
         <th class="sortable" data-key="_ok">status</th>
         <th class="sortable" data-key="cpu_pct">cpu</th>
         <th class="sortable" data-key="mem_pct">mem</th>
@@ -588,6 +594,11 @@ function fmtAge(ts) {
   if (age < 60) return age+'s';
   if (age < 3600) return Math.floor(age/60)+'m';
   return Math.floor(age/3600)+'h';
+}
+function hwCell(m) {
+  if (m._physical === true) return '<span title="physical hardware">🖥</span>';
+  if (m._physical === false) return '<span title="Proxmox VM/LXC guest">📦</span>';
+  return '<span class="muted" title="unknown — re-poll to pick this up">?</span>';
 }
 function statusCell(m) {
   if (m._ok) return '<span class="ok">OK</span>';
@@ -853,7 +864,10 @@ function renderOverview() {
 function hostMatchesFilter(name, m) {
   const f = ($('hosts-filter').value || '').toLowerCase().trim();
   const cat = $('hosts-cat-filter').value;
+  const hw = $('hosts-hw-filter').value;
   if (cat && (m._category || '') !== cat) return false;
+  if (hw === 'physical' && m._physical !== true) return false;
+  if (hw === 'virtual' && m._physical !== false) return false;
   if (!f) return true;
   return name.toLowerCase().includes(f) ||
          String(m.addr || '').toLowerCase().includes(f);
@@ -887,6 +901,7 @@ function renderHosts() {
     html += `<tr class="clickable" onclick="if(event.target.tagName!=='BUTTON')location.hash='host/${n}'">
       <td><b>${escapeHtml(n)}</b><div class="muted" style="font-size:0.7rem">${escapeHtml(m.addr||'')}</div></td>
       <td class="cat-${cat}">${cat}</td>
+      <td>${hwCell(m)}</td>
       <td>${statusCell(m)}</td>
       <td class="${valueClass(m.cpu_pct,80,95)}">${m.cpu_pct ?? '-'}</td>
       <td class="${valueClass(m.mem_pct,85,95)}">${m.mem_pct ?? '-'}</td>
@@ -1051,6 +1066,7 @@ async function renderHostDetail(name) {
     `IP: <b>${escapeHtml(m.addr || '?')}</b>`,
     `category: <span class="cat-${m._category||'?'}">${m._category||'?'}</span>`,
   ];
+  metaParts.push(`hardware: ${hwCell(m)} ${m._physical === false ? 'VM/LXC guest' : m._physical === true ? 'physical' : 'unknown'}`);
   if (m._chip) metaParts.push(`chip: <code>${escapeHtml(m._chip)}</code>`);
   if (m._parent) metaParts.push(`parent: <a href="#host/${m._parent}">${m._parent}</a>`);
   metaParts.push(`OS: ${escapeHtml(m._god_os || '?')}`);
