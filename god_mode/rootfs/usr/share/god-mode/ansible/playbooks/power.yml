@@ -8,6 +8,11 @@
 #
 #  Wake-on-LAN does NOT live here (the addon sends magic packets from
 #  Python; no SSH possible if the host is off).
+#
+#  Windows gets its own branch: `shutdown -h` / `/sbin/poweroff` are
+#  POSIX-only and either no-op or error out over Windows' OpenSSH, which
+#  silently "succeeds" while doing nothing — same OS-detection pattern as
+#  install_agent.yml (read /data/metadata/<host>.json, or detect inline).
 # =====================================================================
 - name: GOD Mode power control
   hosts: all
@@ -16,29 +21,64 @@
   vars:
     action: shutdown   # override with -e action=reboot
     delay: now
+    metadata_dir: /data/metadata
   tasks:
     - name: Validate action
       ansible.builtin.fail:
         msg: "action must be 'shutdown' or 'reboot'"
       when: action not in ['shutdown','reboot']
 
-    - name: Shutdown host
+    - name: Read detect_os metadata (if present)
+      ansible.builtin.set_fact:
+        meta: "{{ (lookup('file', metadata_dir ~ '/' ~ inventory_hostname ~ '.json', errors='ignore') or '{}') | from_json }}"
+
+    - name: Inline detect when metadata absent
+      ansible.builtin.raw: uname -a 2>/dev/null || powershell -NoProfile -Command "$PSVersionTable.PSVersion.Major"
+      register: probe
+      changed_when: false
+      failed_when: false
+      when: meta.god_os is not defined
+
+    - name: Classify when metadata absent
+      ansible.builtin.set_fact:
+        meta:
+          god_os: >-
+            {%- if probe.stdout is defined and 'Darwin' in probe.stdout -%}macos
+            {%- elif probe.stdout is defined and probe.stdout | trim | length > 0 and probe.stdout | regex_search('^[0-9]+$') -%}windows
+            {%- elif probe.stdout is defined and 'Linux' in probe.stdout -%}{% if 'OpenWrt' in probe.stdout %}busybox{% else %}linux{% endif %}
+            {%- else -%}unknown
+            {%- endif -%}
+      when: meta.god_os is not defined
+
+    - name: Shutdown host (Windows)
+      ansible.builtin.raw: shutdown /s /t 0 /f
+      when: action == 'shutdown' and meta.god_os == 'windows'
+      changed_when: true
+      failed_when: false
+
+    - name: Reboot host (Windows)
+      ansible.builtin.raw: shutdown /r /t 0 /f
+      when: action == 'reboot' and meta.god_os == 'windows'
+      changed_when: true
+      failed_when: false
+
+    - name: Shutdown host (POSIX)
       ansible.builtin.shell: |
         sudo -n shutdown -h {{ delay }} 2>/dev/null \
           || shutdown -h {{ delay }} 2>/dev/null \
           || /sbin/poweroff
-      when: action == 'shutdown'
+      when: action == 'shutdown' and meta.god_os != 'windows'
       async: 5
       poll: 0
       changed_when: true
       failed_when: false
 
-    - name: Reboot host
+    - name: Reboot host (POSIX)
       ansible.builtin.shell: |
         sudo -n shutdown -r {{ delay }} 2>/dev/null \
           || shutdown -r {{ delay }} 2>/dev/null \
           || /sbin/reboot
-      when: action == 'reboot'
+      when: action == 'reboot' and meta.god_os != 'windows'
       async: 5
       poll: 0
       changed_when: true

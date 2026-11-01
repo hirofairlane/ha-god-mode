@@ -2,6 +2,13 @@
 # =====================================================================
 #  ping.yml - quick connectivity check (no metrics).
 #  Used by the web UI "Test all hosts" button.
+#
+#  `ansible.builtin.ping` assumes a POSIX Python interpreter on the
+#  target, which Windows doesn't have — it would report every Windows
+#  host as unreachable even when SSH works fine. `echo PONG` over `raw`
+#  needs nothing but a shell, and `echo` means the same thing in sh,
+#  bash, cmd.exe and PowerShell alike, so this works unmodified across
+#  linux/macos/busybox/windows.
 # =====================================================================
 - name: GOD Mode connectivity test
   hosts: all
@@ -9,7 +16,9 @@
   any_errors_fatal: false
   tasks:
     - name: SSH ping
-      ansible.builtin.ping:
+      ansible.builtin.raw: echo PONG
       register: ping_result
+      changed_when: false
+      failed_when: "'PONG' not in ping_result.stdout | default('')"
       ignore_unreachable: true
       ignore_errors: true
