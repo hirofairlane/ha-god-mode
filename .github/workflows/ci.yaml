@@ -92,17 +92,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
-      contents: write        # crear la Release
-      packages: write        # empujar a ghcr.io
+      contents: write        # create the Release
+      packages: write        # push to ghcr.io
     steps:
       - uses: actions/checkout@v4
 
-      - name: Comprobar que el tag y config.yaml dicen lo mismo
+      - name: Check that the tag and config.yaml agree
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           CFG=$(grep -E '^version:' god_mode/config.yaml | cut -d'"' -f2)
           echo "tag=$TAG config.yaml=$CFG"
-          [ "$TAG" = "$CFG" ] || { echo "::error::el tag $TAG no coincide con config.yaml $CFG"; exit 1; }
+          [ "$TAG" = "$CFG" ] || { echo "::error::tag $TAG does not match config.yaml $CFG"; exit 1; }
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -112,10 +112,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Una imagen por arquitectura, cada una con SU base. No vale un
-      # build-push multi-plataforma con un unico BUILD_FROM: la base de
-      # aarch64 en amd64 no arranca.
-      - name: Construir y publicar cada arquitectura
+      # One image per architecture, each with ITS OWN base. A multi-platform
+      # build-push with a single BUILD_FROM doesn't work here: the aarch64
+      # base won't boot under amd64.
+      - name: Build and publish each architecture
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
@@ -123,13 +123,13 @@ jobs:
           pip -q install pyyaml
           python3 -c 'import yaml; [print(a, b) for a, b in yaml.safe_load(open("god_mode/build.yaml"))["build_from"].items()]' > /tmp/bases.txt
           cat /tmp/bases.txt
-          while read -r ARCO BASE; do
-            echo "::group::$ARCO desde $BASE"
+          while read -r ARCH BASE; do
+            echo "::group::$ARCH from $BASE"
             docker buildx build \
-              --platform "linux/$([ "$ARCO" = amd64 ] && echo amd64 || echo arm64)" \
+              --platform "linux/$([ "$ARCH" = amd64 ] && echo amd64 || echo arm64)" \
               --build-arg "BUILD_FROM=$BASE" \
-              --tag "$REPO/$ARCO:$TAG" \
-              --tag "$REPO/$ARCO:latest" \
+              --tag "$REPO/$ARCH:$TAG" \
+              --tag "$REPO/$ARCH:latest" \
               --push god_mode
             echo "::endgroup::"
           done < /tmp/bases.txt

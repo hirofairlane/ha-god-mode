@@ -31,7 +31,7 @@ async def registro(token: str) -> list:
         await ws.send(json.dumps({"type": "auth", "access_token": token}))
         r = json.loads(await ws.recv())
         if r.get("type") != "auth_ok":
-            raise SystemExit(f"  autenticacion rechazada: {r}")
+            raise SystemExit(f"  authentication rejected: {r}")
         await ws.send(json.dumps({"id": 1, "type": "config/device_registry/list"}))
         while True:
             m = json.loads(await ws.recv())
@@ -40,7 +40,7 @@ async def registro(token: str) -> list:
 
 
 def main() -> int:
-    # Mismo fichero que usa censo-red.py, para no tener el token en dos sitios
+    # Same file censo-red.py uses, so the token doesn't live in two places
     tok = Path("/etc/censo-red.token")
     if not tok.exists():
         tok = Path("/tmp/ha.token")
@@ -60,9 +60,9 @@ def main() -> int:
     vivos = {r["mac"]: r for r in c.execute("SELECT * FROM dispositivos WHERE vivo=1")}
     todos = {r["mac"]: r for r in c.execute("SELECT * FROM dispositivos")}
 
-    print(f"  dispositivos en HA ......... {len(disp)}")
-    print(f"  de ellos, con MAC conocida . {len(por_mac)}")
-    print(f"  que ademas estan en el censo: {len(set(por_mac) & set(todos))}")
+    print(f"  devices in HA .............. {len(disp)}")
+    print(f"  of those, with a known MAC . {len(por_mac)}")
+    print(f"  that are also in the census: {len(set(por_mac) & set(todos))}")
 
     nuevos, mejorados = 0, 0
     for mac, d in por_mac.items():
@@ -76,9 +76,9 @@ def main() -> int:
             partes.append(d["model"])
         desc = " · ".join(str(p) for p in partes)
         actual = todos[mac]
-        # Se sobrescribe una descripcion DEBIL (la heuristica del fabricante)
-        # pero NUNCA una escrita a mano (`origen='manual'`): HA sabe mas que la
-        # heuristica, pero menos que Sergio.
+        # A WEAK description (the manufacturer heuristic) gets overwritten,
+        # but NEVER one written by hand (`origen='manual'`): HA knows more
+        # than the heuristic, but less than the person who typed it in.
         if actual["descripcion"] is None:
             c.execute("""UPDATE dispositivos SET descripcion=?, origen='HA', firme=1,
                          actualizado=? WHERE mac=?""", (desc, ahora(), mac))
@@ -88,10 +88,10 @@ def main() -> int:
                          actualizado=? WHERE mac=?""", (desc, ahora(), mac))
             mejorados += 1
     c.commit()
-    print(f"  identificados nuevos ....... {nuevos}")
-    print(f"  descripciones debiles mejoradas con datos de HA: {mejorados}")
+    print(f"  newly identified ........... {nuevos}")
+    print(f"  weak descriptions improved with HA data: {mejorados}")
     sin = c.execute("SELECT COUNT(*) FROM dispositivos WHERE vivo=1 AND descripcion IS NULL").fetchone()[0]
-    print(f"\n  vivos {len(vivos)} · sin identificar ahora: {sin}")
+    print(f"\n  alive {len(vivos)} · unidentified now: {sin}")
     return 0
 
 

@@ -4,5 +4,6 @@
   "influx_url": "http://192.168.1.2:8086/write?db=homeassistant",
   "access_points": {
     "Router1": "192.168.1.1"
-  }
+  },
+  "ssh_jump": ["ssh", "bastion-host"]
 }

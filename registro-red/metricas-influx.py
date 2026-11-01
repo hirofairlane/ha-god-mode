@@ -50,10 +50,10 @@ def main() -> int:
         "nunca_vistos":     q("SELECT COUNT(*) FROM dispositivos WHERE veces=0"),
         "reservas_dhcp":    q("SELECT COUNT(*) FROM reservas"),
     }
-    # Formato de linea de InfluxDB: medida,etiquetas campo=valor
+    # InfluxDB line format: measurement,tags field=value
     lineas = [f"censo_red {','.join(f'{k}={v}i' for k, v in metricas.items())}"]
 
-    # Y un desglose por perfil, para ver como avanza la clasificacion
+    # Plus a breakdown by profile, to see how classification is progressing
     for fila in c.execute("""
         SELECT COALESCE(perfil,'sin_clasificar') p, COUNT(*) n
         FROM dispositivos WHERE vivo=1 GROUP BY p"""):

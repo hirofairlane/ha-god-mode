@@ -37,7 +37,7 @@ MAC_OK = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 IP_OK = re.compile(r"^192\.168\.[01]\.\d{1,3}$")
 PERFILES = ("pleno", "nube", "local")
 ESTADOS = ("pendiente", "aprobado", "retirado", "bloqueado")
-# Que ES el aparato, que es distinto de `perfil` (que es su politica de salida).
+# What the device IS, which is different from `perfil` (its outbound policy).
 TIPOS = ("movil", "tablet", "portatil", "pc", "tele", "streaming", "altavoz",
          "camara", "enchufe", "sensor", "impresora", "servidor", "router", "otro")
 
@@ -63,14 +63,14 @@ def listar(filtro: str) -> list[dict]:
 
 
 def reservar(mac: str, ip: str, nombre: str) -> tuple[bool, str]:
-    """Crea o actualiza la reserva estatica en el OpenWrt principal.
+    """Creates or updates the static reservation on the main OpenWrt router.
 
-    Esto es lo que evita que el portatil cambie de IP. Se hace con `uci`, con
-    copia previa, y aplicando solo un `dnsmasq restart` — que NO corta el wifi,
-    al contrario que un `wifi reload`.
+    This is what stops the device from changing IP. Done with `uci`, with a
+    backup first, applying only a `dnsmasq restart` — which does NOT drop
+    the wifi, unlike a `wifi reload`.
     """
     if not MAC_OK.match(mac) or not IP_OK.match(ip):
-        return False, "MAC o IP no validas"
+        return False, "invalid MAC or IP"
     nombre = re.sub(r"[^A-Za-z0-9_-]", "-", (nombre or "")[:40]) or f"dev-{mac[-5:].replace(':','')}"
     guion = f"""
       cp /etc/config/dhcp /etc/config/dhcp.bak.$(date +%Y%m%d-%H%M%S)
@@ -87,7 +87,7 @@ def reservar(mac: str, ip: str, nombre: str) -> tuple[bool, str]:
     r = subprocess.run(["ssh", "-n", "-o", "ConnectTimeout=10", ROUTER, guion],
                        capture_output=True, text=True, timeout=60)
     if "OK" not in r.stdout:
-        return False, (r.stderr or r.stdout or "sin respuesta")[:200]
+        return False, (r.stderr or r.stdout or "no response")[:200]
     c = abrir()
     c.execute("""INSERT INTO reservas VALUES (?,?,?,?)
                  ON CONFLICT(mac) DO UPDATE SET ip=excluded.ip, nombre=excluded.nombre,
@@ -98,38 +98,38 @@ def reservar(mac: str, ip: str, nombre: str) -> tuple[bool, str]:
 
 def actualizar(mac: str, cuerpo: dict) -> tuple[bool, str]:
     if not MAC_OK.match(mac):
-        return False, "MAC no valida"
+        return False, "invalid MAC"
     c = abrir()
     sets, args = [], []
     if "descripcion" in cuerpo:
-        # Escrita a mano => firme, y el cruce con HA ya no la pisa.
+        # Written by hand => firm, and the HA cross-reference no longer overwrites it.
         sets += ["descripcion=?", "firme=1", "origen='manual'"]
         args.append(cuerpo["descripcion"][:300])
     if "perfil" in cuerpo:
         if cuerpo["perfil"] not in PERFILES + ("",):
-            return False, "perfil no valido"
+            return False, "invalid profile"
         sets.append("perfil=?")
         args.append(cuerpo["perfil"] or None)
     if "tipo" in cuerpo:
         if cuerpo["tipo"] not in TIPOS + ("",):
-            return False, "tipo no valido"
+            return False, "invalid type"
         sets.append("tipo=?")
         args.append(cuerpo["tipo"] or None)
     if "estado" in cuerpo:
         if cuerpo["estado"] not in ESTADOS:
-            return False, "estado no valido"
+            return False, "invalid state"
         sets.append("estado=?")
         args.append(cuerpo["estado"])
     if not sets:
-        return False, "nada que cambiar"
+        return False, "nothing to change"
     sets.append("actualizado=?")
     args += [ahora(), mac]
     cur = c.execute(f"UPDATE dispositivos SET {', '.join(sets)} WHERE mac=?", args)
     c.commit()
-    # Sin esto se contestaba "guardado" aunque la MAC no existiera.
+    # Without this it would answer "saved" even if the MAC didn't exist.
     if cur.rowcount == 0:
-        return False, "esa MAC no esta en el registro"
-    return True, "guardado"
+        return False, "that MAC isn't in the registry"
+    return True, "saved"
 
 
 class H(BaseHTTPRequestHandler):
@@ -176,7 +176,7 @@ class H(BaseHTTPRequestHandler):
         if "/eventos" in p:
             return self._responde(200, {"eventos": filas(
                 "SELECT * FROM avistamientos ORDER BY ts DESC LIMIT 60")})
-        self._responde(404, {"error": "no existe"})
+        self._responde(404, {"error": "not found"})
 
     def do_POST(self):
         if not self._auth():
@@ -185,7 +185,7 @@ class H(BaseHTTPRequestHandler):
         try:
             cuerpo = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
-            return self._responde(400, {"error": "json invalido"})
+            return self._responde(400, {"error": "invalid json"})
         p = self.path.split("?")[0].rstrip("/")
         if "/reserva/" in p:
             mac = p.rsplit("/reserva/", 1)[1].lower()
@@ -195,7 +195,7 @@ class H(BaseHTTPRequestHandler):
             mac = p.rsplit("/dispositivo/", 1)[1].lower()
             ok, msg = actualizar(mac, cuerpo)
             return self._responde(200 if ok else 400, {"ok": ok, "mensaje": msg})
-        self._responde(404, {"error": "no existe"})
+        self._responde(404, {"error": "not found"})
 
     def log_message(self, *a):
         pass

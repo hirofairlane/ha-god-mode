@@ -1,11 +1,11 @@
-"""El puerto de ingress y el que abre el servidor tienen que coincidir.
+"""The ingress port and the one the server actually opens must match.
 
-REGRESION: `ingress_port: 8099` se quito de config.yaml porque el linter
-oficial de add-ons rechaza las claves puestas a su valor por defecto. Es
-seguro **mientras** el defecto del Supervisor siga siendo 8099 y el servidor
-siga escuchando ahi. Si alguno de los dos cambia y el otro no, la pestana deja
-de cargar sin ningun error visible: el Supervisor proxea a un puerto donde no
-hay nadie. Este test ata las dos puntas.
+REGRESSION: `ingress_port: 8099` was removed from config.yaml because the
+official add-on linter rejects keys left at their default value. That's
+safe **only while** the Supervisor's default stays 8099 and the server
+keeps listening there. If either one changes and the other doesn't, the
+sidebar tab stops loading with no visible error: the Supervisor proxies to
+a port where nobody's listening. This test ties both ends together.
 """
 from __future__ import annotations
 
@@ -38,11 +38,11 @@ def test_ingress_apunta_donde_escucha_el_servidor():
 
 
 def test_no_se_repiten_valores_por_defecto():
-    """Lo que hacia fallar al linter oficial: claves que no aportan nada."""
+    """What made the official linter fail: keys that add nothing."""
     cfg = yaml.safe_load(CONFIG.read_text())
     for clave, defecto in (("boot", "auto"), ("host_network", False),
                            ("ingress_port", DEFECTO_SUPERVISOR)):
         assert cfg.get(clave, object()) != defecto, (
-            f"'{clave}' esta puesto a su valor por defecto ({defecto!r}): "
-            f"quitalo o el linter de add-ons falla"
+            f"'{clave}' is set to its default value ({defecto!r}): "
+            f"remove it or the add-on linter fails"
         )

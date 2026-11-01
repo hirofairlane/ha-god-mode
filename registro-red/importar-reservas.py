@@ -36,8 +36,8 @@ def main() -> int:
                        nombre=excluded.nombre, ts=excluded.ts""", (mac, ip, nombre, t))
         hay = c.execute("SELECT mac, veces FROM dispositivos WHERE mac=?", (mac,)).fetchone()
         if hay is None:
-            # Reserva de algo que NUNCA hemos visto vivo. Es exactamente el tipo
-            # de entrada que Sergio no reconoce.
+            # A reservation for something we've NEVER seen alive. This is
+            # exactly the kind of entry nobody recognizes.
             c.execute("""INSERT INTO dispositivos
                 (mac, descripcion, origen, firme, ip, hostname, veces, vivo, actualizado)
                 VALUES (?,?,?,0,?,?,0,0,?)""",
@@ -49,10 +49,10 @@ def main() -> int:
     total = c.execute("SELECT COUNT(*) FROM reservas").fetchone()[0]
     jamas = c.execute("""SELECT COUNT(*) FROM dispositivos
                          WHERE veces=0 AND origen='dhcp'""").fetchone()[0]
-    print(f"  reservas en el DHCP ........... {total}")
-    print(f"  incorporadas al registro ...... {nuevas}")
-    print(f"  NUNCA vistas vivas ............ {jamas}  <- las que no reconoces")
-    print(f"  total de dispositivos ......... "
+    print(f"  reservations in DHCP .......... {total}")
+    print(f"  added to the registry ......... {nuevas}")
+    print(f"  NEVER seen alive .............. {jamas}  <- the ones you don't recognize")
+    print(f"  total devices .................. "
           f"{c.execute('SELECT COUNT(*) FROM dispositivos').fetchone()[0]}")
     return 0
 

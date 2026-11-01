@@ -55,8 +55,9 @@ CREATE INDEX IF NOT EXISTS idx_avist_ts    ON avistamientos(ts);
 """
 
 
-# Columnas anadidas despues de la creacion original. `CREATE TABLE IF NOT
-# EXISTS` no toca una tabla que ya existe, asi que hay que anadirlas a mano.
+# Columns added after the table was originally created. `CREATE TABLE IF NOT
+# EXISTS` doesn't touch a table that already exists, so these have to be
+# added by hand.
 COLUMNAS_NUEVAS = {
     "dispositivos": {"tipo": "TEXT"},
 }

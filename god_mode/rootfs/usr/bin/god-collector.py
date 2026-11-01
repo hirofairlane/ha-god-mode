@@ -32,11 +32,11 @@ from pathlib import Path
 
 
 def _load_sibling(modname: str, nombre_fichero: str):
-    """Carga un modulo hermano buscandolo PRIMERO junto a este fichero.
+    """Loads a sibling module, looking FIRST next to this file.
 
-    Antes se apuntaba directo a /usr/bin/..., que solo existe dentro del
-    contenedor: fuera de el la importacion reventaba, y eso deja el modulo
-    sin poder testearse (regla 1 del estandar de QA).
+    Used to point straight at /usr/bin/..., which only exists inside the
+    container: outside it the import blew up, which leaves the module
+    untestable (rule 1 of the QA standard).
     """
     for candidato in (Path(__file__).resolve().parent / nombre_fichero,
                       Path("/usr/bin") / nombre_fichero):

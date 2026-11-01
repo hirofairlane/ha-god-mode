@@ -64,19 +64,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from config import CONFIG  # noqa: E402
 from red_db_lib import abrir  # noqa: E402
 
-# Nombre -> IP, desde infra.local.json. Algun AP puede entrar por un enlace de
-# radio y no siempre responder; se intenta igual, y si no contesta se dice y
-# se sigue con los demas.
+# Name -> IP, from infra.local.json. Some AP may be behind a radio link and
+# not always respond; it's tried anyway, and if it doesn't answer that's
+# reported and the rest continue.
 ROUTERS = CONFIG["access_points"]
 
 MAC_OK = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 
-# Secciones que no se tocan jamas (ver cabecera).
+# Sections that are never touched (see module header).
 PREFIJOS_INTOCABLES = ("bh", "backhaul", "mesh", "wds")
 
 
 def macs_bloqueadas() -> list[str]:
-    """Las MAC que el registro dice que no deben estar en la wifi."""
+    """The MACs the registry says must not be on the wifi."""
     c = abrir()
     filas = c.execute(
         "SELECT mac FROM dispositivos WHERE estado='bloqueado' ORDER BY mac"
@@ -97,11 +97,11 @@ def parsea_wireless(salida: str) -> dict[str, dict]:
         izquierda, derecha = linea.split("=", 1)
         partes = izquierda.split(".")
         if len(partes) != 3:
-            continue          # wireless.<seccion> (sin opcion): no interesa
+            continue          # wireless.<section> (no option): not relevant
         _, seccion, opcion = partes
         valor = derecha.strip()
         if opcion == "maclist":
-            # uci lista varios valores entre comillas separados por espacio
+            # uci lists several values in quotes, space-separated
             secciones.setdefault(seccion, {})[opcion] = [
                 v.strip("'\"").lower() for v in re.findall(r"'[^']*'|\"[^\"]*\"|\S+", valor)
             ]
@@ -113,11 +113,11 @@ def parsea_wireless(salida: str) -> dict[str, dict]:
 def gestionable(seccion: str, opciones: dict) -> tuple[bool, str]:
     """Can we write this interface's maclist? And if not, why."""
     if any(seccion.lower().startswith(p) for p in PREFIJOS_INTOCABLES):
-        return False, "backhaul por nombre"
+        return False, "backhaul by name"
     if opciones.get("macfilter") == "allow":
-        return False, "esta en modo allow (backhaul o whitelist manual)"
+        return False, "in allow mode (backhaul or manual whitelist)"
     if not opciones.get("ssid"):
-        return False, "sin ssid"
+        return False, "no ssid"
     return True, ""
 
 
@@ -146,52 +146,54 @@ def planificar(secciones: dict[str, dict], bloqueadas: list[str]) -> dict[str, d
 
 
 def auditar() -> int:
-    """Lista lo que los routers bloquean por su cuenta. No escribe nada.
+    """Lists what the routers block on their own. Writes nothing.
 
-    Empezo siendo un `--importar` que marcaba esas MAC como `bloqueado` en el
-    registro, y era un error grave: el `estado` del registro es **global** y
-    estos filtros son **por AP**. Las tres MAC que aparecieron en el Sotano
-    (la impresora HP, el Shelly 4PM y el riego de la caseta) no estan
-    expulsadas de la red: estan apartadas de ESE punto de acceso para que se
-    asocien a otro. Importarlas y sincronizar las habria echado de toda la
-    casa, que es justo lo contrario de lo que se quiso al ponerlas.
+    This started out as a `--importar` that marked those MACs as `bloqueado`
+    in the registry, and that was a serious mistake: the registry's `estado`
+    is **global**, but these filters are **per AP**. Three MACs that showed
+    up on one AP (a printer, a smart plug and a pool-pump controller) aren't
+    kicked off the network: they're kept off THAT access point so they
+    associate with another one. Importing them and syncing would have
+    thrown them off the whole house, which is the exact opposite of why
+    they were put there in the first place.
 
-    Asi que se listan, se respetan, y la decision de que hacer con ellas es
-    de quien las puso.
+    So they get listed, left alone, and the decision of what to do with
+    them belongs to whoever put them there.
     """
     encontradas: dict[str, list[str]] = {}
     for nombre, ip in ROUTERS.items():
         ok, salida = _ssh(ip, "uci show wireless")
         if not ok or "wireless." not in salida:
-            print(f"  {nombre:10} SIN ACCESO")
+            print(f"  {nombre:10} NO ACCESS")
             continue
         for seccion, opciones in parsea_wireless(salida).items():
             puede, _ = gestionable(seccion, opciones)
             if not puede:
-                continue           # el backhaul no cuenta como bloqueo
+                continue           # backhaul doesn't count as a block
             for m in opciones.get("maclist") or []:
                 encontradas.setdefault(m, []).append(f"{nombre}/{opciones.get('ssid', '')}")
 
     del_registro = set(macs_bloqueadas())
     ajenas = {m: d for m, d in encontradas.items() if m not in del_registro}
     if not ajenas:
-        print("Los routers no bloquean nada que no venga del registro.")
+        print("The routers aren't blocking anything outside the registry.")
         return 0
 
     c = abrir()
-    print("Filtros por AP puestos a mano (NO los toca esta herramienta):\n")
+    print("Per-AP filters set by hand (NOT touched by this tool):\n")
     for mac, donde in sorted(ajenas.items()):
         fila = c.execute("SELECT descripcion FROM dispositivos WHERE mac=?", (mac,)).fetchone()
-        quien = (fila["descripcion"] if fila else None) or "(no esta en el registro)"
-        print(f"  {mac}  {quien[:40]:42} en {', '.join(donde)}")
-    print("\nSon decisiones por punto de acceso, no expulsiones de la red.")
+        quien = (fila["descripcion"] if fila else None) or "(not in the registry)"
+        print(f"  {mac}  {quien[:40]:42} on {', '.join(donde)}")
+    print("\nThese are per-access-point decisions, not network-wide bans.")
     return 0
 
 
 def _ssh(ip: str, guion: str, timeout: int = 40) -> tuple[bool, str]:
-    """Ejecuta en el router. Se va por LXC 104, que es quien tiene las llaves."""
-    orden = ["ssh", "zeratul", f"pct exec 104 -- ssh -n -o ConnectTimeout=8 "
-                               f"-o BatchMode=yes root@{ip} {json.dumps(guion)}"]
+    """Runs on the router, through the configured jump host (`ssh_jump`),
+    since that's where the SSH keys to the routers live."""
+    orden = [*CONFIG["ssh_jump"],
+             f"ssh -n -o ConnectTimeout=8 -o BatchMode=yes root@{ip} {json.dumps(guion)}"]
     try:
         r = subprocess.run(orden, capture_output=True, text=True, timeout=timeout)
         return r.returncode == 0, (r.stdout or r.stderr)
@@ -203,7 +205,7 @@ def aplica_router(nombre: str, ip: str, bloqueadas: list[str], escribir: bool,
                   retirar: bool = False) -> None:
     ok, salida = _ssh(ip, "uci show wireless")
     if not ok or "wireless." not in salida:
-        print(f"  {nombre:10} SIN ACCESO ({salida.strip()[:60]})")
+        print(f"  {nombre:10} NO ACCESS ({salida.strip()[:60]})")
         return
 
     plan = planificar(parsea_wireless(salida), bloqueadas)
@@ -211,22 +213,22 @@ def aplica_router(nombre: str, ip: str, bloqueadas: list[str], escribir: bool,
     for seccion, p in sorted(plan.items()):
         if not p["gestionable"]:
             if p["faltan"]:
-                print(f"  {nombre:10} {seccion:12} SE RESPETA — {p['motivo']}")
+                print(f"  {nombre:10} {seccion:12} LEFT ALONE — {p['motivo']}")
             continue
         sobran = p["sobran"] if retirar else []
         if p["sobran"] and not retirar:
-            print(f"  {nombre:10} {seccion:12} {len(p['sobran'])} bloqueadas en el router "
-                  f"que el registro no conoce — se dejan "
-                  f"(--importar para adoptarlas, --retirar-sobrantes para quitarlas)")
+            print(f"  {nombre:10} {seccion:12} {len(p['sobran'])} blocked on the router "
+                  f"that the registry doesn't know about — left as is "
+                  f"(--importar to adopt them, --retirar-sobrantes to remove them)")
         if not p["faltan"] and not sobran:
             continue
         hubo = True
         print(f"  {nombre:10} {seccion:12} ssid={p['ssid']:15} "
               f"+{len(p['faltan'])} -{len(p['sobran'])}")
         for m in p["faltan"]:
-            print(f"    + bloquear {m}")
+            print(f"    + block {m}")
         for m in sobran:
-            print(f"    - desbloquear {m}")
+            print(f"    - unblock {m}")
 
         if not escribir:
             continue
@@ -239,50 +241,50 @@ def aplica_router(nombre: str, ip: str, bloqueadas: list[str], escribir: bool,
                 f"uci delete wireless.{seccion}.maclist 2>/dev/null; "
                 f"for m in {lista}; do uci add_list wireless.{seccion}.maclist=$m; done; "
                 f"uci set wireless.{seccion}.macfilter='deny'; "
-                f"uci commit wireless && echo APLICADO"
+                f"uci commit wireless && echo APPLIED"
             )
         else:
-            # Sin nadie bloqueado se retira el filtro entero. Con `uci delete`,
-            # NUNCA con macfilter='disable' (ver cabecera).
+            # With nobody blocked, the whole filter is removed. With
+            # `uci delete`, NEVER with macfilter='disable' (see module header).
             guion = (
                 f"cp /etc/config/wireless /etc/config/wireless.bak.$(date +%Y%m%d-%H%M%S); "
                 f"uci delete wireless.{seccion}.maclist 2>/dev/null; "
                 f"uci delete wireless.{seccion}.macfilter 2>/dev/null; "
-                f"uci commit wireless && echo APLICADO"
+                f"uci commit wireless && echo APPLIED"
             )
         ok, salida = _ssh(ip, guion)
-        print(f"    -> {'aplicado' if 'APLICADO' in salida else 'ERROR: ' + salida.strip()[:80]}")
+        print(f"    -> {'applied' if 'APPLIED' in salida else 'ERROR: ' + salida.strip()[:80]}")
 
-        # Echar al bloqueado sin reiniciar la radio: solo le afecta a el.
+        # Kick the blocked device without restarting the radio: only affects it.
         for m in p["faltan"]:
             _ssh(ip, f"for i in $(ubus list | grep hostapd. | cut -d. -f2); do "
                      f"ubus call hostapd.$i del_client "
                      f"'{{\"addr\":\"{m}\",\"reason\":5,\"deauth\":true,\"ban_time\":60000}}' "
-                     f"2>/dev/null; done; echo ECHADO")
+                     f"2>/dev/null; done; echo KICKED")
 
     if not hubo:
-        print(f"  {nombre:10} al dia")
+        print(f"  {nombre:10} up to date")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--aplicar", action="store_true", help="escribe (por defecto, ensayo en seco)")
-    ap.add_argument("--router", help="solo este router")
+    ap.add_argument("--aplicar", action="store_true", help="write (default is dry run)")
+    ap.add_argument("--router", help="only this router")
     ap.add_argument("--auditar", action="store_true",
-                    help="lista lo que ya esta bloqueado en los routers y no viene del registro")
+                    help="list what's already blocked on the routers and not from the registry")
     ap.add_argument("--retirar-sobrantes", action="store_true",
-                    help="quita del router lo que el registro ya no bloquea (ver aviso)")
+                    help="remove from the router what the registry no longer blocks (see warning)")
     args = ap.parse_args()
 
     if args.auditar:
         return auditar()
 
     bloqueadas = macs_bloqueadas()
-    print(f"Bloqueadas en el registro: {len(bloqueadas)}")
+    print(f"Blocked in the registry: {len(bloqueadas)}")
     for m in bloqueadas:
         print(f"  {m}")
     if not args.aplicar:
-        print("\n(ensayo en seco — no se escribe nada. Repite con --aplicar)\n")
+        print("\n(dry run — nothing is written. Repeat with --aplicar)\n")
 
     for nombre, ip in ROUTERS.items():
         if args.router and args.router.lower() != nombre.lower():

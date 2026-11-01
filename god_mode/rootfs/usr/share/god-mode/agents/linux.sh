@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # =====================================================================
-#  god-agent.sh - emite JSON con metricas de host (Linux universal)
+#  god-agent.sh - emits JSON with host metrics (universal Linux)
 #  Path destino: /usr/local/bin/god-agent (chmod 755)
-#  Llamado por LXC 104 (jarvis collector) via SSH cada 60s.
+#  Called by the collector host via SSH every 60s.
 #
-#  Output: una linea JSON con campos estandarizados.
-#  No requiere sudo (todo de /proc, /sys, df, free, sensors si esta).
+#  Output: one JSON line with standardized fields.
+#  Requires no sudo (everything from /proc, /sys, df, free, sensors if present).
 # =====================================================================
 set -euo pipefail
 
@@ -61,7 +61,7 @@ for tz in /sys/class/thermal/thermal_zone*/temp; do
   fi
 done
 
-# Si esta `sensors` (lm-sensors), buscar valor mas alto Package/Tdie/Tctl
+# If `sensors` (lm-sensors) is present, find the highest Package/Tdie/Tctl value
 if command -v sensors >/dev/null 2>&1; then
   alt=$( { sensors -u 2>/dev/null || true; } | awk -F': *' 'BEGIN{m=0} /_input:/ {if($2+0>m && $2+0<200) m=$2+0} END{printf "%.0f", m+0}' || true )
   alt=${alt:-0}
@@ -70,9 +70,9 @@ if command -v sensors >/dev/null 2>&1; then
   fi
 fi
 
-# Updates pendientes (apt / dnf / pacman). Usamos subshells con
-# || true para evitar que set -e/pipefail mate el script si el gestor
-# devuelve exit 1 cuando NO hay updates (caso pacman -Qu).
+# Pending updates (apt / dnf / pacman). We use subshells with
+# || true to stop set -e/pipefail from killing the script if the package
+# manager returns exit 1 when there are NO updates (the pacman -Qu case).
 updates=0
 if command -v apt-get >/dev/null 2>&1 && [ -d /var/lib/apt/lists ]; then
   updates=$( { apt-get -s upgrade 2>/dev/null || true; } | grep -c '^Inst' || true )
@@ -141,7 +141,7 @@ else
   htype="bare"
 fi
 
-# Output JSON una linea
+# One-line JSON output
 printf '{'
 printf '"host":"%s",' "$host"
 printf '"htype":"%s",' "$htype"

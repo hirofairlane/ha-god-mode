@@ -1,8 +1,8 @@
-"""Tests de la whitelist de wifi.
+"""Tests for the wifi whitelist.
 
-Aqui se prueba la parte que decide QUE tocar, no la que lo escribe. Es
-deliberado: el dano de este modulo no esta en el SSH, esta en elegir mal la
-interfaz. Dos de estos tests son regresiones de averias reales.
+This tests the part that decides WHAT to touch, not the part that writes it.
+Deliberate: this module's real risk isn't the SSH, it's picking the wrong
+interface. Two of these tests are regressions of real outages.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def wl():
     return mod
 
 
-# Forma real de una salida de `uci show wireless`, con MACs y SSID de ejemplo.
+# Realistic shape of `uci show wireless` output, with example MACs and SSID.
 SOTANO = """wireless.radio0=wifi-device
 wireless.wifinet0=wifi-iface
 wireless.wifinet0.device='radio0'
@@ -59,10 +59,10 @@ def test_seccion_sin_maclist_no_revienta(wl):
 
 
 def test_el_backhaul_del_salon_no_se_toca(wl):
-    """REGRESION: escribir en `bh5` deja la caseta incomunicada.
+    """REGRESSION: writing to `bh5` cuts off the AP on the other end of the link.
 
-    Se protege por dos vias a la vez (nombre y modo allow) a proposito: una
-    sola barrera es una sola oportunidad de equivocarse.
+    Deliberately protected two ways at once (name and allow mode): a single
+    barrier is a single chance to get it wrong.
     """
     plan = wl.planificar(wl.parsea_wireless(SALON), ["aa:bb:cc:dd:ee:ff"])
     assert plan["bh5"]["gestionable"] is False
@@ -80,7 +80,7 @@ def test_interfaz_sin_ssid_no_se_toca(wl):
 
 
 def test_quita_lo_que_ya_no_esta_bloqueado(wl):
-    """Si una MAC deja de estar bloqueada en el registro, sale del router."""
+    """If a MAC stops being blocked in the registry, it comes off the router."""
     plan = wl.planificar(wl.parsea_wireless(SOTANO), ["aa:aa:aa:aa:aa:01"])
     assert plan["wifinet0"]["sobran"] == ["aa:aa:aa:aa:aa:02"]
     assert plan["wifinet0"]["faltan"] == []
@@ -93,11 +93,12 @@ def test_sin_cambios_no_propone_nada(wl):
 
 
 def codigo_ejecutable() -> str:
-    """El fuente sin comentarios ni docstrings.
+    """The source with no comments or docstrings.
 
-    Hace falta porque la cabecera del modulo EXPLICA lo que no debe hacerse, y
-    buscar esas cadenas en el fichero entero da falsos positivos: el primer
-    intento de estos dos tests fallaba leyendo su propia documentacion.
+    Needed because the module header EXPLAINS what it should never do, and
+    searching for those strings across the whole file gives false
+    positives: the first attempt at these two tests failed by reading its
+    own documentation.
     """
     import ast
     arbol = ast.parse(FICHERO.read_text())
@@ -106,15 +107,16 @@ def codigo_ejecutable() -> str:
             if (nodo.body and isinstance(nodo.body[0], ast.Expr)
                     and isinstance(nodo.body[0].value, ast.Constant)
                     and isinstance(nodo.body[0].value.value, str)):
-                nodo.body.pop(0)          # fuera el docstring
-    return ast.unparse(arbol)             # ast.unparse ya descarta comentarios
+                nodo.body.pop(0)          # drop the docstring
+    return ast.unparse(arbol)             # ast.unparse already drops comments
 
 
 def test_nunca_se_escribe_macfilter_disable():
-    """REGRESION del apagon de 24 h.
+    """REGRESSION from a 24h outage.
 
-    `macfilter='disable'` donde antes no habia opcion impide que radio0
-    levante en OpenWrt 25.12. Para dejar de filtrar se usa `uci delete`.
+    `macfilter='disable'` where there was no option before stops radio0
+    from coming up on OpenWrt 25.12. `uci delete` is used to stop filtering
+    instead.
     """
     codigo = codigo_ejecutable()
     assert "macfilter='disable'" not in codigo
@@ -122,9 +124,9 @@ def test_nunca_se_escribe_macfilter_disable():
 
 
 def test_no_usa_wifi_reload():
-    """`wifi reload` tira a todos los clientes de la radio.
+    """`wifi reload` drops every client on the radio.
 
-    Para echar a uno solo esta `ubus call hostapd.<iface> del_client`.
+    `ubus call hostapd.<iface> del_client` exists to kick just one.
     """
     codigo = codigo_ejecutable()
     assert "wifi reload" not in codigo

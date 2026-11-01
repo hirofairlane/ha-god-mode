@@ -16,6 +16,11 @@ DEFAULTS = {
     "ha_url": "ws://192.168.1.2:8123/api/websocket",
     "influx_url": "http://192.168.1.2:8086/write?db=homeassistant",
     "access_points": {"Router1": "192.168.1.1"},
+    # SSH argv prefix used to run a command where the routers' SSH keys
+    # live. The final remote command gets appended as the last argument.
+    # Override if that's a container/jump host rather than a plain SSH
+    # target (e.g. ["ssh", "bastion-host", "pct exec <ctid> --"]).
+    "ssh_jump": ["ssh", "bastion-host"],
 }
 
 
