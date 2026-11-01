@@ -49,6 +49,13 @@ CREATE TABLE IF NOT EXISTS reservas (
     ts     TEXT
 );
 
+-- Last-sent timestamp per alert digest, so alertas.py can rate-limit
+-- itself without a separate state file.
+CREATE TABLE IF NOT EXISTS alertas (
+    clave TEXT PRIMARY KEY,
+    ts    TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_disp_estado ON dispositivos(estado);
 CREATE INDEX IF NOT EXISTS idx_disp_vivo   ON dispositivos(vivo);
 CREATE INDEX IF NOT EXISTS idx_avist_ts    ON avistamientos(ts);

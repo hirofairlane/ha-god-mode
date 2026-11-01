@@ -5,5 +5,9 @@
   "access_points": {
     "Router1": "192.168.1.1"
   },
-  "ssh_jump": ["ssh", "bastion-host"]
+  "ssh_jump": ["ssh", "bastion-host"],
+  "default_ssh_password": "",
+  "telegram_bot_token": "",
+  "telegram_chat_id": "",
+  "alert_cooldown_s": 21600
 }

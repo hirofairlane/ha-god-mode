@@ -17,7 +17,9 @@ it required registering every device before you could even see it.
                     ├─► recolectar-red.sh ─► censo-db.py ─► red.db ─┬─► red-api.py ─► GOD Mode add-on
   Main router's DHCP┘        (hourly)         (SQLite)              │      (:9877)      (Network tab)
                                                                      ├─► metricas-influx.py ─► InfluxDB
-  Home Assistant ───────────► cruzar-ha.py ──────────────┘             └─► whitelist.py ─► OpenWrt routers
+  Home Assistant ───────────► cruzar-ha.py ──────────────┘             ├─► whitelist.py ─► OpenWrt routers
+                                                                        ├─► auto_enroll.py ─► SSH (new hosts)
+                                                                        └─► alertas.py ─► Telegram
 ```
 
 | File | What it does |
@@ -30,6 +32,9 @@ it required registering every device before you could even see it.
 | `tipificar.py` | infers a device's type by reading its description |
 | `whitelist.py` | pushes blocks down to the routers. **Read its header before using it** |
 | `metricas-influx.py` | time series to InfluxDB |
+| `config.py` | loads `infra.local.json` — the one place all the scripts above read real IPs/credentials from |
+| `auto_enroll.py` | finds new SSH-capable devices and gets the GOD Mode pubkey onto them, so onboarding is a click instead of a manual key-paste. **Read its header before using `--aplicar`** |
+| `alertas.py` | Telegram digest when something alive isn't approved — the "possible intruder" alert |
 
 ## Three decisions worth understanding
 
@@ -61,6 +66,9 @@ to avoid a breaking schema migration on an already-running registry.)
 
 What triggers an alert isn't "something new showed up" but **"something
 alive isn't approved"** — a question you can work down to zero over time.
+`alertas.py` sends exactly that as a Telegram digest, at most once per
+`alert_cooldown_s` (default 6h) — one message for the whole backlog, not
+one per device.
 
 ## Types
 
@@ -80,6 +88,17 @@ Anything that doesn't fit goes to `otro` with a free-text description. Adding
 a new type means editing `TIPOS` in `red-api.py`; the UI reads them from
 `/tipos`, so the add-on doesn't need to be redeployed.
 
+## Configuration
+
+Every script above reads its real IPs and credentials from
+`infra.local.json` (gitignored — copy `infra.example.json` and fill it in).
+See `config.py` for the full key list: `router`, `ha_url`, `influx_url`,
+`access_points`, `ssh_jump` (how to reach the routers — direct SSH, or
+through a jump host), `default_ssh_password` (for `auto_enroll.py`),
+`telegram_bot_token` / `telegram_chat_id` (for `alertas.py`) and
+`alert_cooldown_s`. Every key is optional: missing ones just disable that
+feature without breaking anything else.
+
 ## Getting started
 
 ```bash
@@ -89,6 +108,9 @@ export RED_DB=/path/to/red.db
 ./tipificar.py --aplicar
 ./whitelist.py --auditar         # what the routers are already blocking
 ./whitelist.py                   # dry run of the sync
+./auto_enroll.py                 # dry run: lists SSH-shaped candidates
+./auto_enroll.py --aplicar       # also tries the default password once per candidate
+./alertas.py                     # Telegram digest of live+unapproved devices
 ```
 
 Everything that writes defaults to a dry run.

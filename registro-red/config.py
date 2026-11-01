@@ -21,6 +21,17 @@ DEFAULTS = {
     # Override if that's a container/jump host rather than a plain SSH
     # target (e.g. ["ssh", "bastion-host", "pct exec <ctid> --"]).
     "ssh_jump": ["ssh", "bastion-host"],
+    # Fallback password auto_enroll.py tries, once per device, on machines
+    # that don't yet have the GOD Mode pubkey. Empty disables that step —
+    # auto_enroll.py still does the (harmless) tcp/22 + pubkey-only probing.
+    "default_ssh_password": "",
+    # Telegram bot used by alertas.py for "something alive isn't approved"
+    # digests. registro-red runs outside Home Assistant, so it can't reuse
+    # HA's notify service — it talks to the Bot API directly. Empty token
+    # disables sending; alertas.py still prints what it would have sent.
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+    "alert_cooldown_s": 6 * 3600,
 }
 
 
