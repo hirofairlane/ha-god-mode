@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Cruza el censo de red con el registro de dispositivos de Home Assistant.
+"""Cross-references the network census with Home Assistant's device registry.
 
-HA ya sabe muchisimo de estos aparatos: el nombre que les puso Sergio, el
-fabricante, el modelo y la integracion. Y muchos guardan su **MAC** en
-`connections`, que es justamente la clave del censo. Aprovecharlo es mejor que
-pedir que se teclee lo mismo otra vez en otro sitio.
+HA already knows a lot about these devices: the name its owner gave them,
+the manufacturer, the model and the integration. And many of them store
+their **MAC** in `connections`, which is exactly the census's key. Reusing
+that is better than asking for the same thing to be typed in twice.
 
-El registro de dispositivos NO se expone por la API REST: hay que ir por
-WebSocket (`config/device_registry/list`).
+The device registry isn't exposed over the REST API: it has to go through
+the WebSocket API (`config/device_registry/list`).
 """
 from __future__ import annotations
 

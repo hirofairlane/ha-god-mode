@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Publica las metricas del censo en InfluxDB, para poder verlas en Grafana.
+"""Publishes census metrics to InfluxDB, so they can be graphed in Grafana.
 
-El reparto y su motivo:
+The split and why:
 
-- **SQLite guarda el registro**: filas editables, con descripcion, perfil y
-  estado de whitelist. Eso es algo que se muta, no una serie temporal, y meterlo
-  en InfluxDB seria pelearse con la herramienta — no tiene UPDATE ni registros
-  con clave que edites.
-- **InfluxDB guarda la evolucion**: cuantos vivos, cuantos sin aprobar, cuantos
-  sin identificar, en cada momento. Para eso si es la herramienta correcta.
+- **SQLite holds the registry**: editable rows, with description, profile
+  and whitelist state. That's something you mutate, not a time series, and
+  forcing it into InfluxDB would mean fighting the tool — no UPDATE, no
+  editable keyed records.
+- **InfluxDB holds the evolution**: how many alive, how many unapproved, how
+  many unidentified, at each point in time. That's exactly the right tool
+  for that.
 
-Se escribe **directamente a InfluxDB desde zeratul**, sin pasar por HA: asi las
-metricas siguen registrandose aunque Home Assistant este caido o reiniciandose,
-que es justo cuando interesa saber que hay en la red.
+Writes go **directly to InfluxDB**, bypassing HA: that way metrics keep
+being recorded even while Home Assistant is down or restarting, which is
+exactly when you want to know what's on the network.
 """
 from __future__ import annotations
 

@@ -1,17 +1,19 @@
 #!/bin/bash
-# Recolecta el estado vivo de la red en lineas planas. El parseo se hace fuera.
+# Collects the network's live state as flat lines. Parsing happens elsewhere.
 #
-# Formato:  TIPO <tab> campo1 <tab> campo2 <tab> campo3
-#   LEASE   mac  ip  hostname-que-el-aparato-declara
-#   STATIC  mac  ip  nombre-que-le-pusimos-nosotros
+# Format:  TYPE <tab> field1 <tab> field2 <tab> field3
+#   LEASE   mac  ip  hostname-the-device-declares
+#   STATIC  mac  ip  name-we-gave-it
 #   STA     mac  ap  ssid
 #
-# Tres fuentes, cada una aporta lo que las otras no. La tercera es la que dice
-# DONDE esta un aparato inalambrico: preguntar a cada AP por una MAC da la zona
-# de la casa. Un inventario sin eso te dice que algo existe, no donde buscarlo.
+# Three sources, each contributing what the others can't. The third one is
+# what tells you WHERE a wireless device is: asking each AP about a MAC
+# gives you the zone of the house. An inventory without that tells you
+# something exists, not where to look for it.
 #
-# Se emiten lineas y no JSON a proposito: construir JSON a mano en bash con
-# bucles y subshells es fragil, y ya nos costo un fichero corrupto.
+# Lines are emitted on purpose instead of JSON: building JSON by hand in
+# bash with loops and subshells is fragile, and it already cost us one
+# corrupted file.
 set -u
 
 # Real router/AP addresses live in infra.local.sh (gitignored). Copy

@@ -1,51 +1,55 @@
 #!/usr/bin/env python3
-"""Lleva la whitelist del registro a los routers OpenWrt.
+"""Pushes the registry's whitelist down to the OpenWrt routers.
 
-Qué hace: los aparatos marcados `bloqueado` en el registro acaban en la
-`maclist` de cada AP, y se les echa de la wifi. Nada más.
+What it does: devices marked `bloqueado` (blocked) in the registry end up in
+each AP's `maclist`, and get kicked off the wifi. Nothing else.
 
-=========================  POR QUÉ EN MODO `deny`  =========================
+=========================  WHY `deny` MODE  =========================
 
-OpenWrt tiene dos modos de `macfilter`:
+OpenWrt has two `macfilter` modes:
 
-    allow  - solo entra quien está en la lista  (whitelist en el router)
-    deny   - entra todo el mundo menos la lista (blacklist en el router)
+    allow  - only who's on the list gets in   (whitelist on the router)
+    deny   - everyone gets in except the list (blacklist on the router)
 
-Este programa usa **siempre `deny`**, aunque el registro sea una whitelist.
-El motivo es que con `allow` un fallo cualquiera —una MAC mal escrita, un
-móvil que rota su MAC, un aparato que aún no se ha censado— deja fuera a
-media casa, y para arreglarlo hay que llegar al router por cable. Con `deny`
-el peor caso es que algo que debería estar bloqueado siga conectado, que es
-un fallo que se ve y no corta nada.
+This program **always** uses `deny`, even though the registry itself is a
+whitelist. The reason: with `allow`, any single mistake — a mistyped MAC, a
+phone rotating its MAC, a device that hasn't been censused yet — locks out
+half the house, and fixing it means getting to the router over a cable. With
+`deny`, the worst case is that something that should be blocked stays
+connected, which is a visible failure that doesn't cut anyone off.
 
-La whitelist vive en el registro (`estado='aprobado'`); el router solo
-ejecuta la parte negativa.
+The whitelist lives in the registry (`estado='aprobado'`); the router only
+ever runs the negative half of it.
 
-===========================  LO QUE NO TOCA  ===============================
+===========================  WHAT IT NEVER TOUCHES  ===============================
 
-1. **Interfaces de backhaul.** El Salón tiene `wireless.bh5` con
-   `macfilter='allow'` y la MAC del enlace: es la radio que une el salón con
-   la caseta. Escribir ahí deja la caseta incomunicada. Regla: se ignora toda
-   sección cuyo `macfilter` sea `allow`, y toda sección cuyo nombre empiece
-   por `bh`.
-2. **Interfaces sin SSID conocido.** Si no sabemos qué red es, no se toca.
+1. **Backhaul interfaces.** One AP has `wireless.bh5` with
+   `macfilter='allow'` and the link's MAC: that's the radio link to another
+   AP. Writing there cuts that AP off from the network. Rule: any section
+   whose `macfilter` is `allow`, and any section whose name starts with
+   `bh`, is ignored.
+2. **Interfaces with no known SSID.** If we don't know what network it is,
+   it isn't touched.
 
-==========================  Y LO QUE NUNCA HACE  ===========================
+==========================  AND WHAT IT NEVER DOES  ===========================
 
-**Nunca escribe `macfilter='disable'`.** Poner ese valor donde antes no había
-opción impide que `radio0` levante en OpenWrt 25.12: el log entra en bucle
-("Configuring phy0 / Preparing phy0-ap0 / Tearing down phy0"),
-`retry_setup_failed` se queda en true y la banda de 2,4 GHz desaparece. Nos
-costó dos APs caídos casi un día. Para dejar de filtrar se usa `uci delete`.
+**Never writes `macfilter='disable'`.** Setting that where there was no
+option before stops `radio0` from coming up at all on OpenWrt 25.12: the log
+loops ("Configuring phy0 / Preparing phy0-ap0 / Tearing down phy0"),
+`retry_setup_failed` gets stuck at true, and the 2.4 GHz band disappears.
+This cost us two APs down for almost a day. To stop filtering, `uci delete`
+is used instead.
 
-También evita `wifi reload`, que tira a todos los clientes de la radio. La
-`maclist` se aplica con `uci commit` (persistente) y al aparato bloqueado se
-le echa con `ubus call hostapd.<iface> del_client`, que solo le afecta a él.
+It also avoids `wifi reload`, which drops every client on the radio. The
+`maclist` is applied with `uci commit` (persistent), and the blocked device
+is kicked with `ubus call hostapd.<iface> del_client`, which only affects
+that one device.
 
-Uso:
-    ./whitelist.py                # ensayo en seco: dice qué haría
-    ./whitelist.py --aplicar      # escribe en los routers
-    ./whitelist.py --router Sotano --aplicar\n    ./whitelist.py --auditar      # que bloquean los routers por su cuenta
+Usage:
+    ./whitelist.py                  # dry run: says what it would do
+    ./whitelist.py --aplicar        # writes to the routers
+    ./whitelist.py --router Router1 --aplicar
+    ./whitelist.py --auditar        # what the routers are already blocking on their own
 """
 from __future__ import annotations
 

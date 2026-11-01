@@ -1,84 +1,94 @@
-# Registro de red
+# Network registry
 
-Inventario vivo de todo lo que se conecta a la casa. Se ve y se edita desde la
-pestaña **Red** del add-on GOD Mode.
+A living inventory of everything that connects to the house network. Viewed
+and edited from the **Network** tab of the GOD Mode add-on.
 
-La idea de fondo: **nada se da de alta a mano**. El censo recoge lo que hay,
-todo entra como `pendiente`, e identificar es opcional. El producto no es una
-lista completa, es *la lista de desconocidos, que va menguando*. El intento
-anterior murió porque exigía dar de alta cada aparato antes de verlo.
+The core idea: **nothing gets registered by hand**. The census picks up
+whatever exists, everything starts as `pendiente` (pending), and identifying
+a device is optional. The product isn't a complete list — it's *the list of
+unknowns, which keeps shrinking*. The previous attempt at this died because
+it required registering every device before you could even see it.
 
-## Las piezas
+## The pieces
 
 ```
-  routers OpenWrt ──┐
-  (asociaciones)    │
-                    ├─► recolectar-red.sh ─► censo-db.py ─► red.db ─┬─► red-api.py ─► add-on GOD Mode
-  DHCP del principal┘        (cada hora)       (SQLite)             │      (:9877)      (pestaña Red)
-                                                                    ├─► metricas-influx.py ─► InfluxDB
-  Home Assistant ──────────► cruzar-ha.py ────────────┘             └─► whitelist.py ─► routers OpenWrt
+  OpenWrt routers ──┐
+  (associations)    │
+                    ├─► recolectar-red.sh ─► censo-db.py ─► red.db ─┬─► red-api.py ─► GOD Mode add-on
+  Main router's DHCP┘        (hourly)         (SQLite)              │      (:9877)      (Network tab)
+                                                                     ├─► metricas-influx.py ─► InfluxDB
+  Home Assistant ───────────► cruzar-ha.py ──────────────┘             └─► whitelist.py ─► OpenWrt routers
 ```
 
-| Fichero | Qué hace |
+| File | What it does |
 |---|---|
-| `recolectar-red.sh` | entra por SSH a los cinco routers: `station dump` por interfaz con su SSID, más leases y reservas del principal |
-| `censo-db.py` | pasada horaria (`censo-red.timer` en zeratul). Decide quién está vivo |
-| `red_db_lib.py` | esquema y utilidades. La ruta de la BD se fija con `RED_DB` |
-| `red-api.py` | API HTTP en LXC 104 (`:9877`), con token. Es lo que consume el add-on |
-| `cruzar-ha.py` | cruza con el registro de dispositivos de Home Assistant |
-| `tipificar.py` | deduce el tipo de aparato leyendo las descripciones |
-| `whitelist.py` | lleva los bloqueos a los routers. **Lee su cabecera antes de usarlo** |
-| `metricas-influx.py` | series temporales a InfluxDB |
+| `recolectar-red.sh` | SSHes into every router: `station dump` per interface with its SSID, plus leases and reservations from the main router |
+| `censo-db.py` | hourly pass (`censo-red.timer` on the collector host). Decides who's alive |
+| `red_db_lib.py` | schema and utilities. The DB path is set with `RED_DB` |
+| `red-api.py` | HTTP API (`:9877`), token-authenticated. This is what the add-on consumes |
+| `cruzar-ha.py` | cross-references with Home Assistant's device registry |
+| `tipificar.py` | infers a device's type by reading its description |
+| `whitelist.py` | pushes blocks down to the routers. **Read its header before using it** |
+| `metricas-influx.py` | time series to InfluxDB |
 
-## Tres decisiones que conviene entender
+## Three decisions worth understanding
 
-**Vivo no es tener lease.** Un aparato está vivo si está asociado a un AP *o*
-responde al ping. La orangepizero que expulsamos seguía teniendo lease nueve
-horas después de estar apagada; contarla como viva habría escondido el
-problema.
+**Alive isn't the same as having a lease.** A device is alive if it's
+associated to an AP *or* answers a ping. A rogue device we kicked off the
+network once kept its DHCP lease for nine hours after being powered down;
+counting that as "alive" would have hidden the problem.
 
-**SQLite para el registro, InfluxDB para la historia.** El registro son filas
-que se editan (descripción, estado, tipo) y eso InfluxDB no lo hace: no tiene
-UPDATE. Las métricas, al revés, no se editan nunca.
+**SQLite for the registry, InfluxDB for history.** The registry is rows that
+get edited (description, state, type), and InfluxDB can't do that — no
+UPDATE. Metrics, on the other hand, are never edited.
 
-**Sólo se anotan los cambios.** Apuntar 80 aparatos cada hora son miles de
-filas diarias de ruido. `avistamientos` guarda altas, apariciones,
-desapariciones y cambios de IP o de AP, que es una línea temporal legible.
+**Only changes get logged.** Logging 80 devices every hour would be
+thousands of noisy rows a day. `avistamientos` (sightings) only records
+additions, appearances, disappearances and IP/AP changes — a readable
+timeline instead of noise.
 
-## Estados
+## States
 
 ```
-pendiente   visto, sin revisar. Es el estado por defecto
-aprobado    identificado y se queda. Esto es la whitelist
-retirado    era nuestro, ya no existe
-bloqueado   expulsado a propósito
+pendiente   seen, not reviewed yet. The default state
+aprobado    identified and kept. This is the whitelist
+retirado    used to be ours, doesn't exist anymore
+bloqueado   deliberately kicked off
 ```
 
-Lo que dispara la alarma no es «hay algo nuevo» sino **«hay algo vivo que no
-está aprobado»**, que es una pregunta que se puede ir vaciando.
+(These are the literal values stored in the SQLite schema — kept in Spanish
+to avoid a breaking schema migration on an already-running registry.)
 
-## Tipos
+What triggers an alert isn't "something new showed up" but **"something
+alive isn't approved"** — a question you can work down to zero over time.
+
+## Types
 
 `movil · tablet · portatil · pc · tele · streaming · altavoz · camara ·
 enchufe · sensor · impresora · servidor · router · otro`
 
-El tipo dice **qué es** el aparato; el perfil (`pleno`, `nube`, `local`) dice
-**qué se le deja hacer**. Son cosas distintas a propósito: un enchufe Sonoff y
-una tele pueden compartir política y no parecerse en nada.
+(mobile, tablet, laptop, pc, tv, streaming, speaker, camera, smart plug,
+sensor, printer, server, router, other — again, literal enum values from
+the schema, kept as-is.)
 
-Lo que no encaja va a `otro` con su descripción a mano. Añadir un tipo es
-tocar `TIPOS` en `red-api.py`; la interfaz los lee de `/tipos` y no hay que
-volver a desplegar el add-on.
+Type describes **what the device is**; profile (`pleno`, `nube`, `local` —
+full access, cloud-only, local-only) describes **what it's allowed to do**.
+These are deliberately separate: a Sonoff smart plug and a TV can share a
+policy while having nothing else in common.
 
-## Puesta en marcha
+Anything that doesn't fit goes to `otro` with a free-text description. Adding
+a new type means editing `TIPOS` in `red-api.py`; the UI reads them from
+`/tipos`, so the add-on doesn't need to be redeployed.
+
+## Getting started
 
 ```bash
-export RED_DB=/ruta/a/red.db
-./censo-db.py                    # una pasada
-./tipificar.py                   # ensayo en seco
+export RED_DB=/path/to/red.db
+./censo-db.py                    # one pass
+./tipificar.py                   # dry run
 ./tipificar.py --aplicar
-./whitelist.py --auditar         # qué bloquean ya los routers
-./whitelist.py                   # ensayo en seco de la sincronización
+./whitelist.py --auditar         # what the routers are already blocking
+./whitelist.py                   # dry run of the sync
 ```
 
-Todo lo que escribe tiene ensayo en seco por defecto.
+Everything that writes defaults to a dry run.

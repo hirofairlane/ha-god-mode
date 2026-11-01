@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""API HTTP del registro de red. Corre en zeratul; la consume GOD-mode.
+"""HTTP API for the network registry. Runs on its own host; GOD Mode consumes it.
 
-Por que aqui y no dentro del addon de HA:
+Why here and not inside the HA addon:
 
-- **Las llaves de los routers se quedan en zeratul.** Reservar una IP significa
-  escribir en la configuracion del OpenWrt por SSH. Dar ese acceso al addon
-  seria ampliar la superficie por comodidad.
-- **Sobrevive a que HA no este.** Si Home Assistant se cae o se reinicia, el
-  registro sigue respondiendo — que es justo cuando interesa saber que hay en la
-  red.
+- **The routers' SSH keys stay on this host.** Reserving an IP means writing
+  to the OpenWrt config over SSH. Giving the addon that access would widen
+  its attack surface just for convenience.
+- **It survives HA being down.** If Home Assistant crashes or restarts, the
+  registry keeps answering — which is exactly when you want to know what's
+  on the network.
 
-GOD-mode lo consume por proxy, igual que ya hace con su colector.
+GOD Mode consumes it through a proxy, same as it already does for its
+collector.
 
-Autenticacion por token compartido: esta API **modifica el DHCP de la casa**, y
-la LAN no es de fiar (lo aprendimos con `virus-legacy`, que no esta aislada).
+Authentication is a shared token: this API **modifies the house's DHCP
+config**, and the LAN isn't trusted (learned that the hard way with a legacy
+guest network that wasn't isolated).
 """
 from __future__ import annotations
 
