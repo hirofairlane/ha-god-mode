@@ -118,14 +118,19 @@ the collector goes back to plain HTTP.
 
 An opt-in `claude-bridge` service lets you talk to Claude (the actual
 Claude Code CLI, running with real tool access inside this container)
-from a Telegram chat — text, voice messages, and photos.
+from a Telegram chat — text, voice messages, and photos. This runs
+inside Home Assistant on purpose: restarting or reinstalling it from
+outside your LAN is as easy as restarting any other add-on from the
+HA mobile app.
 
-**This is intentionally one of two independent deployments** of the
-same bridge script (`god-claude-bridge.py`): this one, inside the
-add-on container, and a second standalone instance elsewhere on the
-LAN with its own bot token. Two separate bots, two separate hosts —
-if one is down the other still answers. Each reply is prefixed with
-`[instance_name]` so you know which one responded.
+The add-on container itself has no mount into `/mnt/18T` or anything
+else outside its own `/data` — so every prompt is prefixed with a
+short list of the LAN hosts GOD Mode already manages, plus the SSH
+key it can use to reach them (the same key the collector's own
+Ansible runs already use). That's how Claude gets real infra
+awareness — including your NAS tree, which it reaches by SSHing into
+whichever host has it mounted — without the container itself needing
+a direct bind-mount.
 
 Setup:
 
@@ -149,10 +154,11 @@ Setup:
 
 Security note: `claude -p` runs with `--permission-mode
 bypassPermissions` (there's no terminal on the other end to approve
-tool calls), scoped to this container's own filesystem — it has no
-mount into `/mnt/18T` or anything outside the add-on's `/data`. That's
-a deliberate trade for "works unattended from your phone"; only add
-chat ids you trust with that.
+tool calls). Combined with the SSH access described above, this means
+an allowed chat id can effectively run arbitrary commands on any host
+GOD Mode manages — that's a deliberate trade for "works unattended
+from your phone", not an oversight. Only add chat ids you trust with
+that.
 
 ## Architecture
 

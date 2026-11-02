@@ -99,6 +99,44 @@ def test_handle_message_voice_without_transcriber_warns(monkeypatch):
     assert sent and "transcription" in sent[0][1].lower()
 
 
+def test_lan_context_lists_configured_hosts(monkeypatch, tmp_path):
+    mod = _load_bridge(monkeypatch, {})
+    opts = tmp_path / "options.json"
+    opts.write_text(json.dumps({"hosts": [{"name": "zeratul", "addr": "192.168.1.122", "category": "pve_node"}]}))
+    mod.OPTS_FILE = opts
+    ctx = mod._lan_context()
+    assert "zeratul" in ctx and "192.168.1.122" in ctx and "ssh" in ctx.lower()
+
+
+def test_lan_context_empty_without_hosts(monkeypatch, tmp_path):
+    mod = _load_bridge(monkeypatch, {})
+    mod.OPTS_FILE = tmp_path / "missing.json"
+    assert mod._lan_context() == ""
+
+
+def test_ask_claude_prepends_lan_context_to_prompt(monkeypatch, tmp_path):
+    mod = _load_bridge(monkeypatch, {})
+    opts = tmp_path / "options.json"
+    opts.write_text(json.dumps({"hosts": [{"name": "zeratul", "addr": "192.168.1.122"}]}))
+    mod.OPTS_FILE = opts
+    captured = {}
+
+    class FakeResult:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_run(cmd, cwd=None, env=None, capture_output=None, text=None, timeout=None):
+        captured["cmd"] = cmd
+        return FakeResult()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    mod.ask_claude("qué tal el cluster?")
+    sent_prompt = captured["cmd"][2]
+    assert "zeratul" in sent_prompt
+    assert sent_prompt.endswith("qué tal el cluster?")
+
+
 def test_send_message_chunks_long_text(monkeypatch):
     mod = _load_bridge(monkeypatch, {"CLAUDE_BRIDGE_INSTANCE_NAME": "test-instance"})
     calls = []

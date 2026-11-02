@@ -13,12 +13,17 @@ Supports three message kinds:
   - voice/audio: downloaded, converted to wav with ffmpeg and transcribed
     with a local whisper.cpp binary before being forwarded as text.
 
-This same script runs unmodified in two independent deployments (the
-GOD Mode add-on container, and a standalone host) so a failure in one
-place doesn't take down the other. Everything is configured through
-environment variables, which take priority over the add-on's
-/data/options.json when both are present - that's what lets a single
-file serve both deployments.
+The add-on container itself has no mount into /mnt/18T or any other
+host's filesystem, so "LAN infra awareness" comes from SSH: every
+message is prefixed with a short list of the hosts GOD Mode already
+manages (from /data/options.json's `hosts`) plus the private key
+Claude Code can use to reach them - the same key/inventory the
+collector's own Ansible runs already rely on, no new enrollment
+needed as long as a host's authorized_keys trusts it.
+
+Config is read from environment variables, falling back to the
+add-on's /data/options.json - this also lets the script run standalone
+outside the add-on if needed, just by setting env vars instead.
 """
 from __future__ import annotations
 
@@ -160,10 +165,45 @@ def transcribe(audio_path: Path) -> str | None:
         wav_path.unlink(missing_ok=True)
 
 
+SSH_KEY = Path("/data/.ssh/id_ed25519")
+
+
+def _lan_context() -> str:
+    """Short, cheap-to-build reminder of what's reachable over SSH with
+    GOD Mode's own key - the add-on container has no direct filesystem
+    access to anything outside itself, so this is how Claude finds out
+    what's on the LAN at all."""
+    if not OPTS_FILE.exists():
+        return ""
+    try:
+        hosts = json.loads(OPTS_FILE.read_text()).get("hosts", [])
+    except Exception:
+        return ""
+    if not hosts:
+        return ""
+    lines = [
+        f"  - {h.get('name')}: {h.get('addr')} (user {h.get('user', 'root')}, category {h.get('category', '?')})"
+        for h in hosts
+    ]
+    return (
+        "You're running inside the GOD Mode Home Assistant add-on. You have no "
+        "direct filesystem access outside this container, but you can reach the "
+        f"following LAN hosts over SSH using the key at {SSH_KEY} "
+        f"(e.g. `ssh -i {SSH_KEY} -o StrictHostKeyChecking=accept-new <user>@<addr>`), "
+        "provided that host's authorized_keys already trusts it (every host GOD Mode "
+        "monitors does, since the collector's own Ansible runs use this same key):\n"
+        + "\n".join(lines)
+        + "\n\nIn particular, the user's NAS tree /mnt/18T/MIO/Proyectos is mounted on "
+        "the Proxmox host (look for it in the list above, usually named for a pve_node "
+        "category) - SSH there to read or edit files in it.\n\n---\n\n"
+    )
+
+
 def ask_claude(prompt: str) -> str:
     env = os.environ.copy()
     env["CLAUDE_CONFIG_DIR"] = str(CLAUDE_CONFIG_DIR)
-    cmd = ["claude", "-p", prompt, "--output-format", "text", "--permission-mode", "bypassPermissions"]
+    full_prompt = _lan_context() + prompt
+    cmd = ["claude", "-p", full_prompt, "--output-format", "text", "--permission-mode", "bypassPermissions"]
     if CLAUDE_MODEL:
         cmd += ["--model", CLAUDE_MODEL]
     try:
