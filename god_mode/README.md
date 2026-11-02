@@ -114,6 +114,46 @@ validating which cert it's encrypted with.
 Turning this off again leaves the existing cert in place (harmless) and
 the collector goes back to plain HTTP.
 
+### Claude Telegram bridge
+
+An opt-in `claude-bridge` service lets you talk to Claude (the actual
+Claude Code CLI, running with real tool access inside this container)
+from a Telegram chat — text, voice messages, and photos.
+
+**This is intentionally one of two independent deployments** of the
+same bridge script (`god-claude-bridge.py`): this one, inside the
+add-on container, and a second standalone instance elsewhere on the
+LAN with its own bot token. Two separate bots, two separate hosts —
+if one is down the other still answers. Each reply is prefixed with
+`[instance_name]` so you know which one responded.
+
+Setup:
+
+1. Create a bot with [@BotFather](https://t.me/botfather) and get its
+   token (or reuse one already created for this purpose).
+2. Set `telegram_bot_token` and `telegram_allowed_chat_ids` (comma
+   separated Telegram user/chat ids — **only these are allowed to
+   trigger Claude**, everyone else is silently ignored) and
+   `claude_bridge_enabled: true`.
+3. Restart the add-on.
+4. Open a terminal inside the running container (Settings → Add-ons →
+   GOD Mode → ⋮ → `bash`, or `docker exec`) and run `claude login`
+   once. This authenticates Claude Code against your Claude.ai
+   subscription (Pro/Max usage, **no Anthropic API key, no separate
+   billing**) and persists the credential under `/data/claude-bridge/`,
+   so it survives restarts.
+5. Message the bot. Voice messages are transcribed locally with
+   whisper.cpp (`base` multilingual model, built into the image);
+   photos are saved to the bridge's working directory and read
+   natively by Claude Code's own vision-capable Read tool.
+
+Security note: `claude -p` runs with `--permission-mode
+bypassPermissions` (there's no terminal on the other end to approve
+tool calls), scoped to this container's own filesystem — it has no
+mount into `/mnt/18T` or anything outside the add-on's `/data`. That's
+a deliberate trade for "works unattended from your phone"; only add
+chat ids you trust with that.
+
 ## Architecture
 
 ```

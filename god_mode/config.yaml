@@ -1,7 +1,7 @@
 ---
 name: GOD Mode
 slug: god_mode
-version: "0.4.13"
+version: "0.4.14"
 description: >-
   Centralized homelab control plane for Home Assistant. Aggregated
   monitoring of Linux hosts, Proxmox cluster (with auto-discovery of
@@ -41,6 +41,16 @@ options:
   # /data/pki on first start with this set to true. Off by default: the
   # collector stays plain HTTP, same as every prior version.
   tls_enabled: false
+  # Telegram <-> Claude Code bridge (see "Claude Telegram bridge" in the
+  # README). Off by default. Requires `claude login` to be run manually
+  # once inside this container (Settings → Add-ons → GOD Mode → Terminal)
+  # so Claude Code is authenticated with a Claude subscription — no API
+  # key is used or stored anywhere.
+  claude_bridge_enabled: false
+  telegram_bot_token: ""
+  telegram_allowed_chat_ids: ""
+  instance_name: "god-mode"
+  claude_model: ""
   # Example inventory — replace with your own hosts. See the addon README
   # for the full schema (category, parent, mac, pve_token_id, ...).
   hosts:
@@ -56,6 +66,11 @@ schema:
   ssh_user: str
   install_packages: bool
   tls_enabled: bool?
+  claude_bridge_enabled: bool?
+  telegram_bot_token: password?
+  telegram_allowed_chat_ids: str?
+  instance_name: str?
+  claude_model: str?
   hosts:
     - name: match(^[a-z0-9_]+$)
       addr: str
